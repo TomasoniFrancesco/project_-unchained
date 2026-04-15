@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FUCK ZWIFT — Strava Callback</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body class="with-mountains">
+    <div class="page">
+        <div class="brand-header">
+            <h1 class="brand-title">FUCK ZWIFT</h1>
+            <p class="brand-subtitle">Strava Connection</p>
+        </div>
+        <div class="card" style="padding:2rem;max-width:420px;text-align:center;">
+            <div id="status" style="font-size:0.85rem; color:var(--text-secondary);">
+                Connecting to Strava...
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { handleOAuthCallback } from './js/integrations/strava.js';
+
+        const params = new URLSearchParams(window.location.search);
+        const code = params.get('code');
+        const error = params.get('error');
+        const statusEl = document.getElementById('status');
+
+        if (error || !code) {
+            statusEl.innerHTML = '❌ Strava connection failed.<br><a href="profile.html" style="color:var(--primary);">Back to profile</a>';
+        } else {
+            try {
+                const tokens = await handleOAuthCallback(code);
+                statusEl.innerHTML = `✅ Connected as <strong>${tokens.athlete_name || 'Athlete'}</strong>!<br>Redirecting...`;
+                setTimeout(() => window.location.href = 'profile.html', 2000);
+            } catch (err) {
+                statusEl.innerHTML = `❌ Error: ${err.message}<br><a href="profile.html" style="color:var(--primary);">Back to profile</a>`;
+            }
+        }
+    </script>
+</body>
+</html>

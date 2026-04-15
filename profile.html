@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FUCK ZWIFT — Profile</title>
+    <meta name="description" content="Manage your cyclist profile and Strava connection.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="with-mountains">
+    <div class="page">
+        <div class="brand-header">
+            <h1 class="brand-title">FUCK ZWIFT</h1>
+            <p class="brand-subtitle">Cyclist Profile</p>
+        </div>
+
+        <div style="width:100%;max-width:520px;">
+            <a class="back-link" href="index.html" style="margin-bottom:1rem;display:inline-block;">← Back to home</a>
+
+            <!-- Profile form -->
+            <div class="section">
+                <div class="section-title">Profile</div>
+                <div class="card" style="padding:1.5rem;">
+                    <div class="form-group">
+                        <label class="form-label">Name</label>
+                        <input class="form-input" type="text" id="name">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Age</label>
+                        <input class="form-input" type="number" id="age" min="10" max="99">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Gender</label>
+                        <select class="form-select" id="gender">
+                            <option value="male">Male</option>
+                            <option value="female">Female</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Weight (kg)</label>
+                        <input class="form-input" type="number" id="weight" step="0.1" min="30" max="200">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Height (cm) — optional</label>
+                        <input class="form-input" type="number" id="height" min="100" max="250">
+                    </div>
+                    <button class="btn btn-primary btn-full" onclick="window._saveProfile()">Save Profile</button>
+                    <div class="status-msg" id="profileMsg"></div>
+                </div>
+            </div>
+
+            <!-- Strava -->
+            <div class="section">
+                <div class="section-title">Strava</div>
+                <div class="card" style="padding:1.5rem;">
+                    <div id="stravaStatus"></div>
+                    <div class="form-group">
+                        <label class="form-label">Client ID</label>
+                        <input class="form-input" type="text" id="stravaId">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Client Secret</label>
+                        <input class="form-input" type="password" id="stravaSecret">
+                    </div>
+                    <div style="display:flex;gap:0.5rem;">
+                        <button class="btn btn-secondary" style="flex:1" onclick="window._saveStrava()">Save Credentials</button>
+                        <button class="btn btn-strava" style="flex:1" id="connectStravaBtn" onclick="window._connectStrava()">Connect Strava</button>
+                    </div>
+                    <div style="margin-top:0.6rem;">
+                        <button class="btn btn-ghost btn-danger" onclick="window._disconnectStrava()" style="font-size:0.65rem;">Disconnect Strava</button>
+                    </div>
+                    <div class="status-msg" id="stravaMsg"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bottom nav -->
+    <nav class="bottom-nav">
+        <div class="bottom-nav-inner">
+            <a class="bottom-nav-item" href="index.html">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                Home
+            </a>
+            <a class="bottom-nav-item" href="routes.html">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M17 7h4v4"/></svg>
+                Routes
+            </a>
+            <a class="bottom-nav-item" href="history.html">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                History
+            </a>
+            <a class="bottom-nav-item active" href="profile.html">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                Profile
+            </a>
+        </div>
+    </nav>
+
+    <script type="module">
+        import { loadProfile, saveProfile } from './js/storage/profile.js';
+        import { getStrava, updateStrava } from './js/storage/config.js';
+        import { getStatus, startOAuth, disconnect } from './js/integrations/strava.js';
+
+        // Load profile
+        const profile = loadProfile();
+        document.getElementById('name').value = profile.name || '';
+        document.getElementById('age').value = profile.age || '';
+        document.getElementById('gender').value = profile.gender || 'male';
+        document.getElementById('weight').value = profile.weight_kg || '';
+        document.getElementById('height').value = profile.height_cm || '';
+
+        // Load Strava
+        const strava = getStrava();
+        document.getElementById('stravaId').value = strava.client_id || '';
+        document.getElementById('stravaSecret').value = strava.client_secret || '';
+        updateStravaStatus();
+
+        function updateStravaStatus() {
+            const status = getStatus();
+            const el = document.getElementById('stravaStatus');
+            if (status.connected) {
+                el.innerHTML = `<div class="status-pill connected" style="margin-bottom:1rem;"><span class="status-dot"></span> Connected${status.athlete_name ? ': ' + status.athlete_name : ''}</div>`;
+            } else if (status.configured) {
+                el.innerHTML = `<div class="status-pill disconnected" style="margin-bottom:1rem;"><span class="status-dot"></span> Configured but not connected</div>`;
+            } else {
+                el.innerHTML = `<div class="status-pill disconnected" style="margin-bottom:1rem;"><span class="status-dot"></span> Not configured</div>`;
+            }
+        }
+
+        function showMsg(id, text, isError) {
+            const el = document.getElementById(id);
+            el.textContent = text;
+            el.style.color = isError ? '#EF4444' : 'var(--primary)';
+            el.classList.add('show');
+            setTimeout(() => el.classList.remove('show'), 3000);
+        }
+
+        window._saveProfile = function() {
+            saveProfile({
+                name: document.getElementById('name').value,
+                age: document.getElementById('age').value,
+                gender: document.getElementById('gender').value,
+                weight_kg: document.getElementById('weight').value,
+                height_cm: document.getElementById('height').value,
+            });
+            showMsg('profileMsg', '✓ Profile saved');
+        };
+
+        window._saveStrava = function() {
+            const id = document.getElementById('stravaId').value.trim();
+            const secret = document.getElementById('stravaSecret').value.trim();
+            if (!id || !secret) { showMsg('stravaMsg', '⚠ Both fields required', true); return; }
+            updateStrava(id, secret);
+            showMsg('stravaMsg', '✓ Strava credentials saved');
+            updateStravaStatus();
+        };
+
+        window._connectStrava = function() {
+            window._saveStrava();
+            startOAuth();
+        };
+
+        window._disconnectStrava = function() {
+            disconnect();
+            showMsg('stravaMsg', '✓ Strava disconnected');
+            updateStravaStatus();
+        };
+    </script>
+</body>
+</html>

@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FUCK ZWIFT — Devices</title>
+    <meta name="description" content="Connect your Bluetooth smart trainer to FUCK ZWIFT.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        .connect-page .section { max-width: 640px; }
+        .connected-list { display: flex; flex-direction: column; gap: 0.5rem; }
+        .scan-area { width: 100%; max-width: 640px; margin-bottom: 1rem; }
+        .empty-connected { font-size: 0.75rem; color: var(--text-muted); text-align: center; padding: 1.2rem; }
+        .done-area { width: 100%; max-width: 640px; margin-top: 1.5rem; }
+        .ble-not-supported { text-align: center; padding: 3rem 1rem; color: var(--text-muted); font-size: 0.85rem; }
+    </style>
+</head>
+<body class="with-mountains">
+    <div class="page connect-page">
+        <div class="brand-header">
+            <h1 class="brand-title">FUCK ZWIFT</h1>
+            <p class="brand-subtitle">Connect your devices</p>
+        </div>
+        <div style="width:100%;max-width:640px;margin-bottom:1.2rem;">
+            <a class="back-link" href="index.html">← Back to home</a>
+        </div>
+
+        <!-- Connected devices -->
+        <div class="section stagger-1" style="max-width:640px;">
+            <div class="section-title">Connected Devices</div>
+            <div class="connected-list" id="connectedList">
+                <div class="empty-connected">No devices connected yet</div>
+            </div>
+        </div>
+
+        <!-- Scan -->
+        <div class="scan-area stagger-2">
+            <button class="scan-btn" id="scanBtn" onclick="window._scanTrainer()">
+                <div class="scan-spinner" id="scanSpinner"></div>
+                <span id="scanLabel">Scan for Bluetooth Trainer</span>
+            </button>
+        </div>
+
+        <div class="intro-box stagger-3" style="max-width:640px;">
+            💡 <strong>Web Bluetooth</strong> richiede un'azione utente per la scansione. 
+            Clicca il bottone sopra, poi seleziona il tuo trainer dal popup del browser.
+        </div>
+
+        <div class="done-area stagger-4">
+            <a class="btn btn-primary btn-full" href="routes.html">Vai ai Percorsi →</a>
+            <div style="text-align:center;margin-top:0.8rem;">
+                <a class="back-link" href="index.html">← Back to Home</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bottom nav -->
+    <nav class="bottom-nav">
+        <div class="bottom-nav-inner">
+            <a class="bottom-nav-item" href="index.html">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                Home
+            </a>
+            <a class="bottom-nav-item" href="routes.html">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M17 7h4v4"/></svg>
+                Routes
+            </a>
+            <a class="bottom-nav-item" href="history.html">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                History
+            </a>
+            <a class="bottom-nav-item" href="profile.html">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                Profile
+            </a>
+        </div>
+    </nav>
+
+    <script type="module">
+        import { scanAndConnectTrainer, isWebBluetoothAvailable, isTrainerConnected } from './js/ble/manager.js';
+        import { state } from './js/state.js';
+
+        if (!isWebBluetoothAvailable()) {
+            document.querySelector('.scan-area').innerHTML = '<div class="ble-not-supported">⚠️ Web Bluetooth non disponibile. Usa Chrome o Edge.</div>';
+        }
+
+        window._scanTrainer = async function() {
+            const btn = document.getElementById('scanBtn');
+            const spinner = document.getElementById('scanSpinner');
+            const label = document.getElementById('scanLabel');
+
+            btn.classList.add('scanning');
+            spinner.style.display = 'block';
+            label.textContent = 'Seleziona il tuo trainer…';
+
+            const device = await scanAndConnectTrainer();
+
+            btn.classList.remove('scanning');
+            spinner.style.display = 'none';
+            label.textContent = device ? 'Scan for another device' : 'Scan for Bluetooth Trainer';
+
+            updateConnectedUI();
+        };
+
+        state.addEventListener('change', () => updateConnectedUI());
+
+        function updateConnectedUI() {
+            const list = document.getElementById('connectedList');
+            const status = state.get('trainer_status');
+            const name = state.get('trainer_name');
+
+            if (status === 'connected' || status === 'connecting') {
+                const dotClass = status === 'connected' ? 'connected' : 'connecting';
+                const statusText = status === 'connected' ? 'Connected ✓' : 'Connecting…';
+                list.innerHTML = `
+                    <div class="card device-row">
+                        <div class="device-dot ${dotClass}"></div>
+                        <div style="flex:1;min-width:0;">
+                            <div class="device-name">${name || 'Smart Trainer'}</div>
+                            <div class="device-meta">${statusText}</div>
+                        </div>
+                        <span class="type-badge trainer">trainer</span>
+                    </div>`;
+            } else {
+                list.innerHTML = '<div class="empty-connected">No devices connected yet</div>';
+            }
+        }
+    </script>
+</body>
+</html>

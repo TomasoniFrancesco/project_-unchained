@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FUCK ZWIFT — Your Ride. Your Rules.</title>
+    <meta name="description" content="Free indoor cycling platform. Connect your smart trainer, ride real GPX routes, track your performance.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body class="with-mountains">
+
+    <div class="page">
+        <div class="brand-header">
+            <h1 class="brand-title">FUCK ZWIFT</h1>
+            <p class="brand-subtitle">Your ride. Your rules.</p>
+        </div>
+
+        <!-- Connection status -->
+        <div class="section stagger-1" style="max-width:480px;">
+            <div id="trainerStatus">
+                <div class="status-pill disconnected">
+                    <span class="status-dot"></span>
+                    <span id="trainerStatusText">No trainer connected</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main nav -->
+        <div class="section stagger-2" style="max-width:480px;">
+            <a class="card card-interactive" href="connect.html" id="navConnect">
+                <div class="nav-card">
+                    <div class="nav-card-icon icon-blue">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0114.08 0"/><path d="M1.42 9a16 16 0 0121.16 0"/><path d="M8.53 16.11a6 6 0 016.95 0"/><circle cx="12" cy="20" r="1"/></svg>
+                    </div>
+                    <div class="nav-card-body">
+                        <div class="nav-card-title">Devices</div>
+                        <div class="nav-card-desc">Connect your smart trainer via Bluetooth</div>
+                    </div>
+                    <span class="nav-card-chevron">›</span>
+                </div>
+            </a>
+        </div>
+
+        <div class="section stagger-3" style="max-width:480px;">
+            <a class="card card-interactive" href="routes.html" id="navRoutes">
+                <div class="nav-card">
+                    <div class="nav-card-icon icon-green">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M17 7h4v4"/></svg>
+                    </div>
+                    <div class="nav-card-body">
+                        <div class="nav-card-title">Routes</div>
+                        <div class="nav-card-desc">Choose a GPX route and start riding</div>
+                    </div>
+                    <span class="nav-card-chevron">›</span>
+                </div>
+            </a>
+        </div>
+
+        <div class="section stagger-4" style="max-width:480px;">
+            <a class="card card-interactive" href="history.html" id="navHistory">
+                <div class="nav-card">
+                    <div class="nav-card-icon icon-amber">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    </div>
+                    <div class="nav-card-body">
+                        <div class="nav-card-title">History</div>
+                        <div class="nav-card-desc">View past rides and performance</div>
+                    </div>
+                    <span class="nav-card-chevron">›</span>
+                </div>
+            </a>
+        </div>
+
+        <div class="section stagger-5" style="max-width:480px;">
+            <a class="card card-interactive" href="profile.html" id="navProfile">
+                <div class="nav-card">
+                    <div class="nav-card-icon icon-purple">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                    </div>
+                    <div class="nav-card-body">
+                        <div class="nav-card-title">Profile</div>
+                        <div class="nav-card-desc">Cyclist profile & Strava settings</div>
+                    </div>
+                    <span class="nav-card-chevron">›</span>
+                </div>
+            </a>
+        </div>
+
+        <!-- Web Bluetooth warning -->
+        <div id="bleWarning" style="display:none; max-width:480px; width:100%;">
+            <div class="intro-box" style="border-color:rgba(239,68,68,0.3); color:#EF4444;">
+                ⚠️ <strong>Web Bluetooth non disponibile.</strong><br>
+                <span style="color:var(--text-muted); font-size:0.72rem;">
+                    Usa Chrome o Edge su desktop/Android. Safari e iOS non sono supportati.
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bottom nav -->
+    <nav class="bottom-nav">
+        <div class="bottom-nav-inner">
+            <a class="bottom-nav-item active" href="index.html">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                Home
+            </a>
+            <a class="bottom-nav-item" href="routes.html">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M17 7h4v4"/></svg>
+                Routes
+            </a>
+            <a class="bottom-nav-item" href="history.html">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                History
+            </a>
+            <a class="bottom-nav-item" href="profile.html">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                Profile
+            </a>
+        </div>
+    </nav>
+
+    <script type="module">
+        import { isProfileComplete } from './js/storage/profile.js';
+        import { isWebBluetoothAvailable } from './js/ble/manager.js';
+        import { ensureDefaultRoutes } from './js/data/default-routes.js';
+        import { state } from './js/state.js';
+
+        // Check first-time setup
+        if (!isProfileComplete()) {
+            window.location.href = 'setup.html';
+        }
+
+        // Check Web Bluetooth
+        if (!isWebBluetoothAvailable()) {
+            document.getElementById('bleWarning').style.display = 'block';
+        }
+
+        // Load default routes on first visit
+        ensureDefaultRoutes();
+
+        // Update trainer status from state
+        state.addEventListener('change', (e) => {
+            if (e.detail.key === 'trainer_status') {
+                updateTrainerUI(e.detail.value);
+            }
+        });
+
+        function updateTrainerUI(status) {
+            const pill = document.querySelector('#trainerStatus .status-pill');
+            const text = document.getElementById('trainerStatusText');
+            pill.className = 'status-pill ' + (status === 'connected' ? 'connected' :
+                status === 'connecting' ? 'checking' : 'disconnected');
+            text.textContent = status === 'connected' ? `Connected: ${state.get('trainer_name')}` :
+                status === 'connecting' ? 'Connecting...' : 'No trainer connected';
+        }
+    </script>
+</body>
+
+</html>
