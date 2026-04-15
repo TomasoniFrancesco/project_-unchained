@@ -49,7 +49,8 @@ export function startOAuth() {
         return;
     }
 
-    const callbackUrl = window.location.origin + '/strava-callback.html';
+    const basePath = window.location.href.substring(0, window.location.href.lastIndexOf('/') + 1);
+    const callbackUrl = basePath + 'strava-callback.html';
     const url = `${AUTH_URL}?client_id=${s.client_id}&response_type=code` +
                 `&redirect_uri=${encodeURIComponent(callbackUrl)}` +
                 `&approval_prompt=auto&scope=activity:write,activity:read_all`;
