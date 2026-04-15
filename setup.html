@@ -41,7 +41,7 @@
     <div class="page">
         <div class="brand-header">
             <h1 class="brand-title">FUCK ZWIFT</h1>
-            <p class="brand-subtitle">Configurazione iniziale</p>
+            <p class="brand-subtitle">Initial Setup</p>
         </div>
 
         <div class="steps-bar">
@@ -58,55 +58,55 @@
             <!-- Step 0: Welcome -->
             <div class="setup-step active" id="step-0">
                 <div class="welcome-emoji">🚴</div>
-                <div class="welcome-title">Benvenuto!</div>
-                <div class="welcome-text">Configura FUCK ZWIFT in pochi secondi.<br>Ti guideremo attraverso il profilo ciclista e la connessione a Strava.</div>
-                <button class="btn btn-primary btn-full" onclick="goStep(1)">Inizia Setup</button>
+                <div class="welcome-title">Welcome!</div>
+                <div class="welcome-text">Set up FUCK ZWIFT in just a few seconds.<br>We'll walk you through your cyclist profile and Strava connection.</div>
+                <button class="btn btn-primary btn-full" onclick="goStep(1)">Start Setup</button>
             </div>
 
             <!-- Step 1: Profile -->
             <div class="setup-step" id="step-1">
-                <div class="step-title">👤 Profilo Ciclista</div>
-                <div class="step-desc">Queste informazioni servono per calcolare calorie e simulazione fisica.</div>
+                <div class="step-title">👤 Cyclist Profile</div>
+                <div class="step-desc">This information is used to calculate calories and physics simulation.</div>
                 <div class="card" style="padding:1.5rem;">
-                    <div class="form-group"><label class="form-label">Nome</label><input class="form-input" type="text" id="s-name" placeholder="Il tuo nome"></div>
-                    <div class="form-group"><label class="form-label">Età</label><input class="form-input" type="number" id="s-age" value="30" min="10" max="99"></div>
-                    <div class="form-group"><label class="form-label">Sesso</label><select class="form-select" id="s-gender"><option value="male">Maschio</option><option value="female">Femmina</option></select></div>
-                    <div class="form-group"><label class="form-label">Peso (kg)</label><input class="form-input" type="number" id="s-weight" value="75" step="0.1" min="30" max="200"></div>
-                    <div class="form-group"><label class="form-label">Altezza (cm) — opzionale</label><input class="form-input" type="number" id="s-height" min="100" max="250" placeholder="Consigliato"></div>
+                    <div class="form-group"><label class="form-label">Name</label><input class="form-input" type="text" id="s-name" placeholder="Your name"></div>
+                    <div class="form-group"><label class="form-label">Age</label><input class="form-input" type="number" id="s-age" value="30" min="10" max="99"></div>
+                    <div class="form-group"><label class="form-label">Gender</label><select class="form-select" id="s-gender"><option value="male">Male</option><option value="female">Female</option></select></div>
+                    <div class="form-group"><label class="form-label">Weight (kg)</label><input class="form-input" type="number" id="s-weight" value="75" step="0.1" min="30" max="200"></div>
+                    <div class="form-group"><label class="form-label">Height (cm) — optional</label><input class="form-input" type="number" id="s-height" min="100" max="250" placeholder="Recommended"></div>
                 </div>
                 <div class="btn-row">
-                    <button class="btn btn-secondary" onclick="goStep(0)">← Indietro</button>
-                    <button class="btn btn-primary" onclick="saveProfileAndNext()">Continua →</button>
+                    <button class="btn btn-secondary" onclick="goStep(0)">← Back</button>
+                    <button class="btn btn-primary" onclick="saveProfileAndNext()">Continue →</button>
                 </div>
             </div>
 
             <!-- Step 2: Strava -->
             <div class="setup-step" id="step-2">
                 <div class="step-title">🔗 Strava</div>
-                <div class="step-desc">Collega Strava per caricare automaticamente le tue pedalate.<br>Se non hai un account Strava, puoi saltare questo step.</div>
+                <div class="step-desc">Connect Strava to automatically upload your rides.<br>If you don't have a Strava account, you can skip this step.</div>
                 <div class="card" style="padding:1.5rem;">
-                    <div class="form-group"><label class="form-label">Client ID</label><input class="form-input" type="text" id="s-strava-id" placeholder="es. 12345"></div>
-                    <div class="form-group"><label class="form-label">Client Secret</label><input class="form-input" type="password" id="s-strava-secret" placeholder="es. abc123def456..."></div>
+                    <div class="form-group"><label class="form-label">Client ID</label><input class="form-input" type="text" id="s-strava-id" placeholder="e.g. 12345"></div>
+                    <div class="form-group"><label class="form-label">Client Secret</label><input class="form-input" type="password" id="s-strava-secret" placeholder="e.g. abc123def456..."></div>
                     <details style="margin-top:0.5rem;">
-                        <summary style="font-size:0.75rem;color:var(--text-secondary);cursor:pointer;">Come ottenere le credenziali Strava?</summary>
+                        <summary style="font-size:0.75rem;color:var(--text-secondary);cursor:pointer;">How to get Strava credentials?</summary>
                         <div style="margin-top:0.5rem;">
-                            <div class="guide-step"><div class="guide-num">1</div><div class="guide-text">Vai su <a href="https://www.strava.com/settings/api" target="_blank">strava.com/settings/api</a></div></div>
-                            <div class="guide-step"><div class="guide-num">2</div><div class="guide-text">Clicca <strong>"Create an App"</strong> (o modifica quella esistente)</div></div>
+                            <div class="guide-step"><div class="guide-num">1</div><div class="guide-text">Go to <a href="https://www.strava.com/settings/api" target="_blank">strava.com/settings/api</a></div></div>
+                            <div class="guide-step"><div class="guide-num">2</div><div class="guide-text">Click <strong>"Create an App"</strong> (or edit the existing one)</div></div>
                             <div class="guide-step"><div class="guide-num">3</div><div class="guide-text">
-                                Campo <strong>"Sito Web"</strong>:<br>
+                                <strong>"Website"</strong> field:<br>
                                 <code>https://tomasonifrancesco.github.io</code>
                             </div></div>
                             <div class="guide-step"><div class="guide-num">4</div><div class="guide-text">
-                                Campo <strong>"Dominio di callback di autorizzazione"</strong>:<br>
+                                <strong>"Authorization Callback Domain"</strong> field:<br>
                                 <code>tomasonifrancesco.github.io</code>
                             </div></div>
-                            <div class="guide-step"><div class="guide-num">5</div><div class="guide-text">Copia <strong>Client ID</strong> e <strong>Client Secret</strong> nei campi qui sopra</div></div>
+                            <div class="guide-step"><div class="guide-num">5</div><div class="guide-text">Copy the <strong>Client ID</strong> and <strong>Client Secret</strong> into the fields above</div></div>
                         </div>
                     </details>
-                    <button class="btn btn-primary btn-full" style="margin-top:1rem;" onclick="saveStravaAndNext()">Salva e continua →</button>
+                    <button class="btn btn-primary btn-full" style="margin-top:1rem;" onclick="saveStravaAndNext()">Save and continue →</button>
                 </div>
-                <a class="skip-link" href="javascript:void(0)" onclick="goStep(3)">Salta — configurerò Strava più tardi</a>
-                <div class="btn-row" style="margin-top:0.5rem;"><button class="btn btn-secondary btn-full" onclick="goStep(1)">← Indietro</button></div>
+                <a class="skip-link" href="javascript:void(0)" onclick="goStep(3)">Skip — I'll set up Strava later</a>
+                <div class="btn-row" style="margin-top:0.5rem;"><button class="btn btn-secondary btn-full" onclick="goStep(1)">← Back</button></div>
             </div>
 
             <!-- Step 3: Done -->
@@ -114,9 +114,9 @@
                 <div class="done-icon">
                     <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
                 </div>
-                <div class="step-title">Tutto pronto! 🎉</div>
-                <div class="step-desc">La configurazione è completa.<br>Connetti il tuo trainer, scegli un percorso e inizia a pedalare!</div>
-                <a class="btn btn-primary btn-full" href="index.html">Vai alla Home →</a>
+                <div class="step-title">All set! 🎉</div>
+                <div class="step-desc">Setup is complete.<br>Connect your trainer, choose a route and start riding!</div>
+                <a class="btn btn-primary btn-full" href="index.html">Go to Home →</a>
             </div>
         </div>
     </div>
@@ -169,7 +169,7 @@
         window.saveStravaAndNext = function() {
             const id = document.getElementById('s-strava-id').value.trim();
             const secret = document.getElementById('s-strava-secret').value.trim();
-            if (!id || !secret) { alert('Inserisci entrambi i campi, oppure salta'); return; }
+            if (!id || !secret) { alert('Please fill in both fields, or skip'); return; }
             updateStrava(id, secret);
             window.goStep(3);
         };
