@@ -3,6 +3,8 @@
 **Piattaforma di ciclismo indoor gratuita e open-source.**  
 Funziona interamente nel browser — zero installazione, zero backend.
 
+🌐 **Live:** [tomasonifrancesco.github.io/project_-unchained/](https://tomasonifrancesco.github.io/project_-unchained/)
+
 ## 🚀 Come usarlo
 
 ### Opzione 1: Locale
@@ -80,9 +82,16 @@ FUCK_ZWIFT_WEB/
 ## 🔗 Strava Setup
 
 1. Vai su [strava.com/settings/api](https://www.strava.com/settings/api)
-2. Crea una nuova app
-3. Nel campo "Authorization Callback Domain" inserisci il dominio dove ospiti l'app
-4. Copia Client ID e Client Secret nella pagina Profile
+2. Crea una nuova app (o modifica quella esistente)
+3. Compila i campi così:
+
+| Campo Strava | Valore |
+|---|---|
+| **Sito Web** | `https://tomasonifrancesco.github.io` |
+| **Dominio di callback di autorizzazione** | `tomasonifrancesco.github.io` |
+
+4. Copia **Client ID** e **Client Secret** nella pagina Profile dell'app
+5. Clicca **Connetti Strava** — verrai reindirizzato e autorizzato automaticamente
 
 ## 📜 Licenza
 
