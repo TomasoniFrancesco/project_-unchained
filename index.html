@@ -5,10 +5,53 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FUCK ZWIFT — Your Ride. Your Rules.</title>
-    <meta name="description" content="Free indoor cycling platform. Connect your smart trainer, ride real GPX routes, track your performance.">
+    <meta name="description"
+        content="Free indoor cycling platform. Connect your smart trainer, ride real GPX routes, track your performance.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
+        rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
+    <style>
+        .hub {
+            width: 100%;
+            max-width: 520px;
+            display: flex;
+            flex-direction: column;
+            gap: 0.6rem;
+        }
+
+        .footer-link {
+            margin-top: 2rem;
+        }
+
+        /* Typewriter effect */
+        .typewriter-word {
+            color: #EAB308;
+            font-weight: 700;
+        }
+
+        .typewriter-cursor {
+            color: #EAB308;
+            font-weight: 700;
+            animation: cursorBlink 0.8s step-end infinite;
+        }
+
+        .typewriter-cursor.hidden {
+            opacity: 0;
+        }
+
+        @keyframes cursorBlink {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0;
+            }
+        }
+    </style>
 </head>
 
 <body class="with-mountains">
@@ -16,7 +59,10 @@
     <div class="page">
         <div class="brand-header">
             <h1 class="brand-title">FUCK ZWIFT</h1>
-            <p class="brand-subtitle">Your ride. Your rules.</p>
+            <p class="brand-subtitle">
+                <span>Your ride. Your </span><span id="typewriter-text" class="typewriter-word"></span><span
+                    id="typewriter-cursor" class="typewriter-cursor">_</span>
+            </p>
         </div>
 
         <!-- Connection status -->
@@ -34,7 +80,13 @@
             <a class="card card-interactive" href="connect.html" id="navConnect">
                 <div class="nav-card">
                     <div class="nav-card-icon icon-blue">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0114.08 0"/><path d="M1.42 9a16 16 0 0121.16 0"/><path d="M8.53 16.11a6 6 0 016.95 0"/><circle cx="12" cy="20" r="1"/></svg>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M5 12.55a11 11 0 0114.08 0" />
+                            <path d="M1.42 9a16 16 0 0121.16 0" />
+                            <path d="M8.53 16.11a6 6 0 016.95 0" />
+                            <circle cx="12" cy="20" r="1" />
+                        </svg>
                     </div>
                     <div class="nav-card-body">
                         <div class="nav-card-title">Devices</div>
@@ -49,7 +101,11 @@
             <a class="card card-interactive" href="routes.html" id="navRoutes">
                 <div class="nav-card">
                     <div class="nav-card-icon icon-green">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M17 7h4v4"/></svg>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M3 17l6-6 4 4 8-8" />
+                            <path d="M17 7h4v4" />
+                        </svg>
                     </div>
                     <div class="nav-card-body">
                         <div class="nav-card-title">Routes</div>
@@ -64,7 +120,11 @@
             <a class="card card-interactive" href="history.html" id="navHistory">
                 <div class="nav-card">
                     <div class="nav-card-icon icon-amber">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10" />
+                            <polyline points="12 6 12 12 16 14" />
+                        </svg>
                     </div>
                     <div class="nav-card-body">
                         <div class="nav-card-title">History</div>
@@ -79,7 +139,11 @@
             <a class="card card-interactive" href="profile.html" id="navProfile">
                 <div class="nav-card">
                     <div class="nav-card-icon icon-purple">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
+                            <circle cx="12" cy="7" r="4" />
+                        </svg>
                     </div>
                     <div class="nav-card-body">
                         <div class="nav-card-title">Profile</div>
@@ -105,19 +169,35 @@
     <nav class="bottom-nav">
         <div class="bottom-nav-inner">
             <a class="bottom-nav-item active" href="index.html">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"
+                    stroke-linejoin="round">
+                    <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+                    <polyline points="9 22 9 12 15 12 15 22" />
+                </svg>
                 Home
             </a>
             <a class="bottom-nav-item" href="routes.html">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M17 7h4v4"/></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"
+                    stroke-linejoin="round">
+                    <path d="M3 17l6-6 4 4 8-8" />
+                    <path d="M17 7h4v4" />
+                </svg>
                 Routes
             </a>
             <a class="bottom-nav-item" href="history.html">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"
+                    stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10" />
+                    <polyline points="12 6 12 12 16 14" />
+                </svg>
                 History
             </a>
             <a class="bottom-nav-item" href="profile.html">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"
+                    stroke-linejoin="round">
+                    <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
+                    <circle cx="12" cy="7" r="4" />
+                </svg>
                 Profile
             </a>
         </div>
@@ -157,6 +237,64 @@
             text.textContent = status === 'connected' ? `Connected: ${state.get('trainer_name')}` :
                 status === 'connecting' ? 'Connecting...' : 'No trainer connected';
         }
+
+        (function () {
+            const texts = ["rules.", "way.", "freedom.", "power."];
+            const speed = 70;          // ms per character typed
+            const deleteSpeed = 40;    // ms per character deleted
+            const waitTime = 1500;     // ms pause after full word
+            const initialDelay = 600;  // ms before first character
+
+            const el = document.getElementById('typewriter-text');
+            const cursor = document.getElementById('typewriter-cursor');
+            let textIndex = 0;
+            let charIndex = 0;
+            let isDeleting = false;
+            let displayText = '';
+
+            function tick() {
+                const currentText = texts[textIndex];
+
+                if (isDeleting) {
+                    // Hide cursor while deleting
+                    cursor.style.visibility = 'hidden';
+                    cursor.style.animation = 'none';
+                    if (displayText.length > 0) {
+                        displayText = displayText.slice(0, -1);
+                        el.textContent = displayText;
+                        setTimeout(tick, deleteSpeed);
+                    } else {
+                        isDeleting = false;
+                        textIndex = (textIndex + 1) % texts.length;
+                        charIndex = 0;
+                        cursor.style.visibility = 'visible';
+                        cursor.style.animation = '';
+                        setTimeout(tick, 300);
+                    }
+                } else {
+                    // Hide cursor while typing
+                    cursor.style.visibility = 'hidden';
+                    cursor.style.animation = 'none';
+                    if (charIndex < currentText.length) {
+                        displayText += currentText[charIndex];
+                        el.textContent = displayText;
+                        charIndex++;
+                        setTimeout(tick, speed);
+                    } else {
+                        // Done typing — show blinking cursor, then start deleting
+                        cursor.style.visibility = 'visible';
+                        cursor.style.animation = '';
+                        setTimeout(function () {
+                            isDeleting = true;
+                            tick();
+                        }, waitTime);
+                    }
+                }
+            }
+
+            // Start after initial delay
+            setTimeout(tick, initialDelay);
+        })();
     </script>
 </body>
 
