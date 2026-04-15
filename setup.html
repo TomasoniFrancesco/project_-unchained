@@ -91,9 +91,16 @@
                         <summary style="font-size:0.75rem;color:var(--text-secondary);cursor:pointer;">Come ottenere le credenziali Strava?</summary>
                         <div style="margin-top:0.5rem;">
                             <div class="guide-step"><div class="guide-num">1</div><div class="guide-text">Vai su <a href="https://www.strava.com/settings/api" target="_blank">strava.com/settings/api</a></div></div>
-                            <div class="guide-step"><div class="guide-num">2</div><div class="guide-text">Clicca <strong>"Create an App"</strong></div></div>
-                            <div class="guide-step"><div class="guide-num">3</div><div class="guide-text">Nel campo <strong>"Authorization Callback Domain"</strong> scrivi il dominio dove ospiti l'app (o <code>localhost</code>)</div></div>
-                            <div class="guide-step"><div class="guide-num">4</div><div class="guide-text">Copia <strong>Client ID</strong> e <strong>Client Secret</strong> qui sopra</div></div>
+                            <div class="guide-step"><div class="guide-num">2</div><div class="guide-text">Clicca <strong>"Create an App"</strong> (o modifica quella esistente)</div></div>
+                            <div class="guide-step"><div class="guide-num">3</div><div class="guide-text">
+                                Campo <strong>"Sito Web"</strong>:<br>
+                                <code>https://tomasonifrancesco.github.io</code>
+                            </div></div>
+                            <div class="guide-step"><div class="guide-num">4</div><div class="guide-text">
+                                Campo <strong>"Dominio di callback di autorizzazione"</strong>:<br>
+                                <code>tomasonifrancesco.github.io</code>
+                            </div></div>
+                            <div class="guide-step"><div class="guide-num">5</div><div class="guide-text">Copia <strong>Client ID</strong> e <strong>Client Secret</strong> nei campi qui sopra</div></div>
                         </div>
                     </details>
                     <button class="btn btn-primary btn-full" style="margin-top:1rem;" onclick="saveStravaAndNext()">Salva e continua →</button>
