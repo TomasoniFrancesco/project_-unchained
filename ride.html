@@ -221,7 +221,7 @@
         import { state } from './js/state.js';
         import { startRide, stopRide, togglePause, gearUp, gearDown, finalizeRide, getRoutePoints, getRideTotalDistance } from './js/engine/ride.js';
         import { loadProfile } from './js/storage/profile.js';
-        import { setControllerCallbacks } from './js/ble/manager.js';
+        import { setControllerCallbacks, autoReconnectControllers } from './js/ble/manager.js';
 
         // ── Load route from sessionStorage ──
         const routeRaw = sessionStorage.getItem('fz_selected_route');
@@ -241,6 +241,9 @@
             gearDown: () => gearDown(),
             pause:    () => window._togglePause(),
         });
+
+        // ── Auto-reconnect controllers from previous page ──
+        autoReconnectControllers();
 
         // ── Canvas ──
         let routePoints = route.points || [];

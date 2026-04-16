@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FUCK ZWIFT — Activity History</title>
+    <meta name="description" content="View your past rides, stats, and performance on FUCK ZWIFT.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        .activity-list {
+            width: 100%;
+            max-width: 680px;
+            display: flex;
+            flex-direction: column;
+            gap: 0.55rem;
+        }
+        /* Color overrides for stat values */
+        .s-duration .stat-val { color: var(--text); }
+        .s-distance .stat-val { color: var(--color-distance); }
+        .s-power .stat-val    { color: var(--color-power); }
+        .s-cadence .stat-val  { color: var(--color-cadence); }
+        .s-speed .stat-val    { color: var(--color-speed); }
+        .s-elev .stat-val     { color: var(--color-elevation); }
+    </style>
+</head>
+
+<body class="with-mountains">
+
+    <div class="page">
+        <div class="brand-header">
+            <h1 class="brand-title">FUCK ZWIFT</h1>
+            <p class="brand-subtitle">Activity History</p>
+        </div>
+
+        <div style="width:100%;max-width:680px;margin-bottom:1rem;">
+            <a class="back-link" href="/">← Back to home</a>
+        </div>
+
+        <div class="activity-list">
+            {% if activities %}
+            {% for act in activities %}
+            <div class="card activity-card stagger-{{ loop.index }}">
+                <div class="activity-header">
+                    <span class="activity-route-name">{{ act.route_name }}</span>
+                    <span class="activity-date">{{ act.date[:16] | replace('T', ' ') }}</span>
+                </div>
+                <div class="activity-stats">
+                    <div class="stat s-duration">
+                        <div class="stat-val">{{ '%d:%02d' | format((act.duration_s // 60) | int, (act.duration_s % 60) | int) }}</div>
+                        <div class="stat-label">Duration</div>
+                    </div>
+                    <div class="stat s-distance">
+                        <div class="stat-val">{{ '%.2f' | format(act.distance_m / 1000) }}</div>
+                        <div class="stat-label">km</div>
+                    </div>
+                    <div class="stat s-power">
+                        <div class="stat-val">{{ act.avg_power_w | round(0) | int }}</div>
+                        <div class="stat-label">Avg W</div>
+                    </div>
+                    <div class="stat s-cadence">
+                        <div class="stat-val">{{ act.avg_cadence | round(0) | int }}</div>
+                        <div class="stat-label">RPM</div>
+                    </div>
+                    <div class="stat s-speed">
+                        <div class="stat-val">{{ '%.1f' | format(act.avg_speed_kmh) }}</div>
+                        <div class="stat-label">km/h</div>
+                    </div>
+                    <div class="stat s-elev">
+                        <div class="stat-val">{{ act.elevation_gain_m | round(0) | int }}</div>
+                        <div class="stat-label">Elev ↑</div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+            {% else %}
+            <div class="empty-state">
+                <div class="empty-state-icon">🚴</div>
+                No rides yet. Complete a ride to see it here.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Bottom nav -->
+    <nav class="bottom-nav">
+        <div class="bottom-nav-inner">
+            <a class="bottom-nav-item" href="/">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                Home
+            </a>
+            <a class="bottom-nav-item" href="/routes">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M17 7h4v4"/></svg>
+                Routes
+            </a>
+            <a class="bottom-nav-item active" href="/history">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                History
+            </a>
+            <a class="bottom-nav-item" href="/profile">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                Profile
+            </a>
+        </div>
+    </nav>
+</body>
+
+</html>

@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FUCK ZWIFT — Profile</title>
+    <meta name="description" content="Set up your rider profile and Strava integration on FUCK ZWIFT.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        .profile-form {
+            width: 100%;
+            max-width: 500px;
+        }
+        .strava-section {
+            width: 100%;
+            max-width: 500px;
+        }
+    </style>
+</head>
+
+<body class="with-mountains">
+
+    <div class="page">
+        <div class="brand-header">
+            <h1 class="brand-title">FUCK ZWIFT</h1>
+            <p class="brand-subtitle">Rider Profile</p>
+        </div>
+
+        <div class="profile-form page-narrow">
+            <div class="intro-box stagger-1">
+                Your profile is saved locally and loaded automatically on startup. Weight is required for better calorie
+                estimation, and height helps make the estimate a bit more realistic.
+            </div>
+
+            <div class="card stagger-2" style="padding:1.5rem;">
+                <div class="form-group">
+                    <label class="form-label">Name</label>
+                    <input class="form-input" type="text" id="name" value="{{ profile.name }}" placeholder="Your name">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Age</label>
+                    <input class="form-input" type="number" id="age" value="{{ profile.age }}" min="10" max="99">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Gender</label>
+                    <select class="form-select" id="gender">
+                        <option value="male" {{ 'selected' if profile.gender=='male' }}>Male</option>
+                        <option value="female" {{ 'selected' if profile.gender=='female' }}>Female</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Weight (kg)</label>
+                    <input class="form-input" type="number" id="weight_kg" value="{{ profile.weight_kg }}" step="0.1" min="30" max="200">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Height (cm) — optional</label>
+                    <input class="form-input" type="number" id="height_cm" value="{{ profile.height_cm or '' }}" min="100" max="250"
+                        placeholder="Recommended">
+                </div>
+
+                <button class="btn btn-primary btn-full" onclick="saveProfile()">Save Profile</button>
+                <div class="status-msg" id="statusMsg">✓ Profile saved</div>
+            </div>
+        </div>
+
+        <div class="section-divider stagger-3" style="max-width:500px;"></div>
+
+        <div class="strava-section stagger-4">
+            <div class="section-title">Strava Integration</div>
+            <div class="card strava-card" id="stravaCard">
+                <div class="strava-icon-box">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M15.387 17.944l-2.089-4.116h-3.065L15.387 24l5.15-10.172h-3.066l-2.084 4.116z" />
+                        <path d="M7.778 13.828h3.065L5.39 0 0 13.828h3.065L5.39 9.68l2.388 4.148z" opacity="0.5" />
+                    </svg>
+                </div>
+                <div class="strava-info">
+                    <div class="strava-status-text" id="stravaStatus">Checking…</div>
+                    <div class="strava-desc" id="stravaDesc">Loading Strava status</div>
+                </div>
+                <a class="btn btn-strava" id="stravaBtn" href="#" style="display:none;">Connect</a>
+            </div>
+        </div>
+
+        <div style="margin-top:1.2rem;">
+            <a class="back-link" href="/">← Back to home</a>
+        </div>
+    </div>
+
+    <!-- Bottom nav -->
+    <nav class="bottom-nav">
+        <div class="bottom-nav-inner">
+            <a class="bottom-nav-item" href="/">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                Home
+            </a>
+            <a class="bottom-nav-item" href="/routes">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M17 7h4v4"/></svg>
+                Routes
+            </a>
+            <a class="bottom-nav-item" href="/history">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                History
+            </a>
+            <a class="bottom-nav-item active" href="/profile">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                Profile
+            </a>
+        </div>
+    </nav>
+
+    <script>
+        function saveProfile() {
+            const data = {
+                name: document.getElementById('name').value,
+                age: document.getElementById('age').value,
+                gender: document.getElementById('gender').value,
+                weight_kg: document.getElementById('weight_kg').value,
+                height_cm: document.getElementById('height_cm').value,
+            };
+            fetch('/api/profile', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data),
+            })
+                .then(r => r.json())
+                .then(resp => {
+                    const msg = document.getElementById('statusMsg');
+                    msg.textContent = '✓ Profile saved';
+                    msg.style.color = 'var(--primary)';
+                    msg.classList.add('show');
+                    setTimeout(() => msg.classList.remove('show'), 2000);
+                })
+                .catch(err => {
+                    const msg = document.getElementById('statusMsg');
+                    msg.textContent = '✗ Error saving profile';
+                    msg.style.color = '#EF4444';
+                    msg.classList.add('show');
+                });
+        }
+
+        // ── Strava status ──
+        fetch('/api/strava_status')
+            .then(r => r.json())
+            .then(status => {
+                const statusEl = document.getElementById('stravaStatus');
+                const descEl = document.getElementById('stravaDesc');
+                const btn = document.getElementById('stravaBtn');
+                const card = document.getElementById('stravaCard');
+
+                if (!status.configured) {
+                    statusEl.textContent = '⚠ Not configured';
+                    statusEl.style.color = '#F59E0B';
+                    descEl.textContent = 'Add Strava credentials to config.toml';
+                    btn.style.display = 'none';
+                } else if (status.connected) {
+                    statusEl.textContent = '✓ Connected' + (status.athlete_name ? ' as ' + status.athlete_name : '');
+                    statusEl.style.color = 'var(--primary)';
+                    descEl.textContent = 'Rides will upload automatically after saving';
+                    card.classList.add('connected');
+                    btn.style.display = 'none';
+                } else if (status.needs_reconnect) {
+                    statusEl.textContent = '⚠ Session expired';
+                    statusEl.style.color = '#F59E0B';
+                    descEl.textContent = 'Your Strava session has expired';
+                    btn.textContent = 'Reconnect';
+                    btn.href = '/strava/connect';
+                    btn.style.display = 'inline-flex';
+                } else {
+                    statusEl.textContent = '○ Not connected';
+                    statusEl.style.color = 'var(--text-muted)';
+                    descEl.textContent = 'Connect to sync rides to your Strava account';
+                    btn.textContent = 'Connect Strava';
+                    btn.href = '/strava/connect';
+                    btn.style.display = 'inline-flex';
+                }
+            })
+            .catch(() => {
+                document.getElementById('stravaStatus').textContent = '✗ Unavailable';
+                document.getElementById('stravaDesc').textContent = 'Could not reach Strava service';
+            });
+    </script>
+</body>
+
+</html>

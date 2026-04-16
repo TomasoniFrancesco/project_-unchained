@@ -324,6 +324,7 @@
         import {
             scanAndConnectTrainer,
             scanAndConnectController,
+            autoReconnectControllers,
             isWebBluetoothAvailable,
             loadControllerMap,
             clearControllerMap,
@@ -433,7 +434,7 @@
             document.getElementById('mapStatus-' + action).textContent = '⌛ Waiting for button press…';
             document.getElementById('mapStatus-' + action).className = 'map-action-status wait';
 
-            startLearnMode(action, (b0, b1) => {
+            startLearnMode(action, (bytes) => {
                 // Mapping captured
                 document.getElementById('mapRow-' + action).classList.remove('learning');
                 btn.textContent = 'Set';
@@ -460,7 +461,10 @@
                 const sig    = map[action];
                 const status = document.getElementById('mapStatus-' + action);
                 if (sig) {
-                    status.textContent = `✓ Mapped (byte ${sig.b0}, ${sig.b1})`;
+                    const label = sig.bytes
+                        ? `✓ Mapped [${sig.bytes.join(', ')}]`
+                        : `✓ Mapped (byte ${sig.b0}, ${sig.b1})`;
+                    status.textContent = label;
                     status.className   = 'map-action-status ok';
                     document.getElementById('mapRow-' + action).classList.add('mapped');
                 } else {
@@ -499,6 +503,9 @@
         // Load existing map state on page open
         refreshMapUI();
         updateSlotsInfo();
+
+        // Auto-reconnect previously paired controllers
+        autoReconnectControllers();
 
         // ── State listener ───────────────────────────────────────
         state.addEventListener('change', () => {

@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FUCK ZWIFT — Devices</title>
+    <meta name="description" content="Connect your Bluetooth smart trainer and controllers to FUCK ZWIFT.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        .connect-page .section {
+            max-width: 640px;
+        }
+        .connected-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        .scan-area {
+            width: 100%;
+            max-width: 640px;
+            margin-bottom: 1rem;
+        }
+        .scan-results {
+            width: 100%;
+            max-width: 640px;
+        }
+        .empty-connected {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-align: center;
+            padding: 1.2rem;
+        }
+        .empty-hint {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-align: center;
+            padding: 1.5rem;
+        }
+        .done-area {
+            width: 100%;
+            max-width: 640px;
+            margin-top: 1.5rem;
+        }
+    </style>
+</head>
+
+<body class="with-mountains">
+
+    <div class="page connect-page">
+        <div class="brand-header">
+            <h1 class="brand-title">FUCK ZWIFT</h1>
+            <p class="brand-subtitle">Connect your devices</p>
+        </div>
+
+        <div style="width:100%;max-width:640px;margin-bottom:1.2rem;">
+            <a class="back-link" href="/">← Back to home</a>
+        </div>
+
+        <!-- Connected devices -->
+        <div class="section stagger-1" style="max-width:640px;">
+            <div class="section-title">Connected Devices</div>
+            <div class="connected-list" id="connectedList">
+                <div class="empty-connected">No devices connected yet</div>
+            </div>
+        </div>
+
+        <!-- Scan -->
+        <div class="scan-area stagger-2">
+            <button class="scan-btn" id="scanBtn" onclick="startScan()">
+                <div class="scan-spinner" id="scanSpinner"></div>
+                <span id="scanLabel">Scan for Bluetooth Devices</span>
+            </button>
+        </div>
+
+        <!-- Scan results -->
+        <div class="scan-results stagger-3" id="scanResults"></div>
+
+        <!-- Done -->
+        <div class="done-area stagger-4">
+            <a class="btn btn-primary btn-full" href="/">← Back to Home</a>
+        </div>
+    </div>
+
+    <!-- Bottom nav -->
+    <nav class="bottom-nav">
+        <div class="bottom-nav-inner">
+            <a class="bottom-nav-item" href="/">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                Home
+            </a>
+            <a class="bottom-nav-item" href="/routes">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M17 7h4v4"/></svg>
+                Routes
+            </a>
+            <a class="bottom-nav-item" href="/history">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                History
+            </a>
+            <a class="bottom-nav-item" href="/profile">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                Profile
+            </a>
+        </div>
+    </nav>
+
+    <script>
+        // Track the chosen role for each scanned device
+        const deviceRoles = {};   // { address: 'trainer' | 'controller' }
+        const pendingDevices = {}; // { address: 'connecting' | 'connected' }
+
+        const source = new EventSource('/events');
+
+        source.onmessage = function (e) {
+            const s = JSON.parse(e.data);
+
+            // Update connected devices panel
+            renderConnectedDevices(s);
+
+            // Update scan button state
+            const scanBtn = document.getElementById('scanBtn');
+            const spinner = document.getElementById('scanSpinner');
+            const label = document.getElementById('scanLabel');
+            if (s.scanning) {
+                scanBtn.classList.add('scanning');
+                spinner.style.display = 'block';
+                label.textContent = 'Scanning…';
+            } else {
+                scanBtn.classList.remove('scanning');
+                spinner.style.display = 'none';
+                label.textContent = 'Scan for Bluetooth Devices';
+                renderScanResults(s.scan_results, s);
+            }
+
+            // Track connected devices for button state
+            if (s.trainer_address) {
+                pendingDevices[s.trainer_address] = 'connected';
+            }
+            (s.controllers || []).forEach(c => {
+                pendingDevices[c.address] = c.status === 'connected' ? 'connected' : 'connecting';
+            });
+
+            // Update scan result button states
+            updateScanButtonStates(s);
+        };
+
+        function renderConnectedDevices(s) {
+            const list = document.getElementById('connectedList');
+            const devices = [];
+
+            // Trainer
+            if (s.trainer_status === 'connected' || s.trainer_status === 'connecting') {
+                devices.push({
+                    name: s.trainer_name || 'Smart Trainer',
+                    type: 'trainer',
+                    status: s.trainer_status
+                });
+            }
+
+            // Individual controllers
+            (s.controllers || []).forEach(c => {
+                devices.push({
+                    name: c.name || 'Controller',
+                    type: 'controller (' + (c.type || 'unknown') + ')',
+                    status: c.status
+                });
+            });
+
+            if (devices.length === 0) {
+                list.innerHTML = '<div class="empty-connected">No devices connected yet</div>';
+                return;
+            }
+
+            list.innerHTML = devices.map(d => {
+                const dotClass = d.status === 'connected' ? 'connected' :
+                    d.status === 'connecting' ? 'connecting' : 'off';
+                const statusText = d.status === 'connected' ? 'Connected ✓' :
+                    d.status === 'connecting' ? 'Connecting…' : 'Disconnected';
+                const badgeClass = d.type.startsWith('controller') ? 'controller' : 'trainer';
+                return `
+                <div class="card device-row">
+                    <div class="device-dot ${dotClass}"></div>
+                    <div style="flex:1;min-width:0;">
+                        <div class="device-name">${d.name}</div>
+                        <div class="device-meta">${statusText}</div>
+                    </div>
+                    <span class="type-badge ${badgeClass}">${d.type}</span>
+                </div>`;
+            }).join('');
+        }
+
+        function renderScanResults(devices, currentState) {
+            const list = document.getElementById('scanResults');
+            if (!devices || devices.length === 0) {
+                list.innerHTML = '<div class="empty-hint">No devices found. Make sure your trainer is on and discoverable.</div>';
+                return;
+            }
+
+            // Filter out already-connected devices
+            const connectedAddresses = new Set();
+            if (currentState.trainer_address) connectedAddresses.add(currentState.trainer_address);
+            (currentState.controllers || []).forEach(c => connectedAddresses.add(c.address));
+
+            list.innerHTML = devices.map(d => {
+                const tags = (d.tags || []).map(t =>
+                    `<span class="sd-tag ${t}">${t}</span>`
+                ).join('');
+
+                // Default role based on detected tags
+                if (!deviceRoles[d.address]) {
+                    if ((d.tags || []).includes('trainer')) {
+                        deviceRoles[d.address] = 'trainer';
+                    } else {
+                        deviceRoles[d.address] = 'controller';
+                    }
+                }
+
+                const role = deviceRoles[d.address];
+                const isConnected = connectedAddresses.has(d.address);
+                const isPending = pendingDevices[d.address] === 'connecting';
+
+                const trainerActive = role === 'trainer' ? 'active-trainer' : '';
+                const controllerActive = role === 'controller' ? 'active-controller' : '';
+
+                let btnText = 'Connect';
+                let btnClass = 'device-connect-btn';
+                if (isConnected) {
+                    btnText = 'Connected ✓';
+                    btnClass += ' done';
+                } else if (isPending) {
+                    btnText = 'Connecting…';
+                    btnClass += ' connecting';
+                }
+
+                return `
+                <div class="card scan-device" data-address="${d.address}">
+                    <div class="scan-device-top">
+                        <span class="sd-name">${d.name}</span>
+                        <div class="sd-tags">${tags}</div>
+                        <span class="sd-rssi">${d.rssi || '—'} dBm</span>
+                    </div>
+                    <div class="scan-device-actions">
+                        <span class="role-label">Role</span>
+                        <div class="type-selector">
+                            <button class="type-option ${trainerActive}"
+                                    onclick="setRole('${d.address}', 'trainer', this)"
+                                    ${isConnected ? 'disabled' : ''}>
+                                Trainer
+                            </button>
+                            <button class="type-option ${controllerActive}"
+                                    onclick="setRole('${d.address}', 'controller', this)"
+                                    ${isConnected ? 'disabled' : ''}>
+                                Controller
+                            </button>
+                        </div>
+                        <button class="${btnClass}"
+                                data-addr="${d.address}"
+                                onclick="connectDevice('${d.address}')"
+                                ${isConnected || isPending ? 'disabled' : ''}>
+                            ${btnText}
+                        </button>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        function updateScanButtonStates(s) {
+            const connectedAddresses = new Set();
+            if (s.trainer_address) connectedAddresses.add(s.trainer_address);
+            (s.controllers || []).forEach(c => connectedAddresses.add(c.address));
+
+            document.querySelectorAll('.device-connect-btn').forEach(btn => {
+                const addr = btn.getAttribute('data-addr');
+                if (!addr) return;
+
+                if (connectedAddresses.has(addr)) {
+                    btn.textContent = 'Connected ✓';
+                    btn.className = 'device-connect-btn done';
+                    btn.disabled = true;
+                }
+            });
+        }
+
+        function setRole(address, role, el) {
+            deviceRoles[address] = role;
+
+            // Update visual state of sibling buttons
+            const selector = el.parentElement;
+            selector.querySelectorAll('.type-option').forEach(opt => {
+                opt.className = 'type-option';
+            });
+
+            el.classList.add(role === 'trainer' ? 'active-trainer' : 'active-controller');
+        }
+
+        function connectDevice(address) {
+            const role = deviceRoles[address] || 'controller';
+
+            // Update button state immediately
+            const btn = document.querySelector(`.device-connect-btn[data-addr="${address}"]`);
+            if (btn) {
+                btn.textContent = 'Connecting…';
+                btn.className = 'device-connect-btn connecting';
+                btn.disabled = true;
+            }
+            pendingDevices[address] = 'connecting';
+
+            if (role === 'trainer') {
+                fetch(`/connect/trainer/${address}`, { method: 'POST' });
+            } else {
+                fetch(`/connect/controller/${address}`, { method: 'POST' });
+            }
+        }
+
+        function startScan() {
+            fetch('/scan', { method: 'POST' });
+        }
+    </script>
+</body>
+
+</html>
