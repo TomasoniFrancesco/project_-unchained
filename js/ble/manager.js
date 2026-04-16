@@ -10,6 +10,9 @@ import { FTMS_SERVICE, subscribeIndoorBikeData, getControlPoint, requestControl 
 const HID_SERVICE = '00001812-0000-1000-8000-00805f9b34fb';
 const HID_REPORT  = '00002a4d-0000-1000-8000-00805f9b34fb';
 
+// ── Controller button map storage key ─────────────────────────────
+const MAP_KEY = 'fz_controller_map';
+
 // ── Trainer state ──────────────────────────────────────────────────
 let trainerDevice       = null;
 let trainerServer       = null;
@@ -20,6 +23,10 @@ let onTrainerData       = null;
 // ── Controller state ───────────────────────────────────────────────
 let controllerDevice = null;
 let controllerServer = null;
+
+// ── Learn mode ────────────────────────────────────────────────────
+let learnModeAction   = null;   // 'gearUp' | 'gearDown' | 'pause' | null
+let learnModeCallback = null;   // called with { b0, b1 } when a button is pressed
 
 // ── Controller action callbacks (set by ride.html) ─────────────────
 const controllerCallbacks = {
@@ -33,12 +40,68 @@ export function setControllerCallbacks(cb) {
 }
 
 // ══════════════════════════════════════════════════════════════════
+//  BUTTON MAP — localStorage persistence
+// ══════════════════════════════════════════════════════════════════
+
+/**
+ * Load saved button mappings from localStorage.
+ * Returns { gearUp: {b0, b1}, gearDown: {b0, b1}, pause: {b0, b1} }
+ * Any action that hasn't been mapped yet will be null.
+ */
+export function loadControllerMap() {
+    try {
+        return JSON.parse(localStorage.getItem(MAP_KEY)) || {};
+    } catch {
+        return {};
+    }
+}
+
+/**
+ * Save a single action's button signature to localStorage.
+ */
+export function saveButtonMapping(action, b0, b1) {
+    const map = loadControllerMap();
+    map[action] = { b0, b1 };
+    localStorage.setItem(MAP_KEY, JSON.stringify(map));
+    console.log(`[BLE] Saved mapping: ${action} → [${b0}, ${b1}]`);
+}
+
+/**
+ * Clear all saved button mappings.
+ */
+export function clearControllerMap() {
+    localStorage.removeItem(MAP_KEY);
+    console.log('[BLE] Controller map cleared');
+}
+
+/**
+ * Start learn mode: the next button press on the controller will be
+ * captured and saved as the mapping for `action`.
+ *
+ * @param {string}   action   - 'gearUp' | 'gearDown' | 'pause'
+ * @param {function} callback - called with (b0, b1) when button is captured
+ */
+export function startLearnMode(action, callback) {
+    learnModeAction   = action;
+    learnModeCallback = callback;
+    console.log(`[BLE] Learn mode started for: ${action}`);
+}
+
+export function cancelLearnMode() {
+    learnModeAction   = null;
+    learnModeCallback = null;
+}
+
+export function isLearning() {
+    return learnModeAction !== null;
+}
+
+// ══════════════════════════════════════════════════════════════════
 //  TRAINER
 // ══════════════════════════════════════════════════════════════════
 
 /**
  * Scan and connect to an FTMS smart trainer.
- * Requires a user gesture — call from a button click handler.
  */
 export async function scanAndConnectTrainer(dataCallback) {
     onTrainerData = dataCallback;
@@ -67,9 +130,7 @@ export async function scanAndConnectTrainer(dataCallback) {
             state.update({
                 trainer_status: 'disconnected',
                 trainer_name:   '',
-                power:   0,
-                cadence: 0,
-                speed:   0,
+                power: 0, cadence: 0, speed: 0,
             });
         });
 
@@ -86,7 +147,6 @@ export async function scanAndConnectTrainer(dataCallback) {
 
         state.set('trainer_status', 'connected');
         console.log('[BLE] Trainer fully connected');
-
         return device;
 
     } catch (err) {
@@ -101,9 +161,6 @@ export async function scanAndConnectTrainer(dataCallback) {
     }
 }
 
-/**
- * Send simulation parameters (grade) to the connected trainer.
- */
 export async function sendSimulationParams(grade) {
     if (!trainerControlPoint) return;
     try {
@@ -120,10 +177,8 @@ export function isTrainerConnected() {
 
 export function disconnectTrainer() {
     if (trainerServer && trainerServer.connected) trainerServer.disconnect();
-    trainerServer       = null;
-    trainerControlPoint = null;
-    bikeDataChar        = null;
-    trainerDevice       = null;
+    trainerServer = null; trainerControlPoint = null;
+    bikeDataChar  = null; trainerDevice = null;
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -132,8 +187,7 @@ export function disconnectTrainer() {
 
 /**
  * Scan and connect to a BLE remote controller.
- * Tries to subscribe to HID Report notifications and maps button bytes
- * to gear shift / pause actions.
+ * Subscribes to HID Report notifications and dispatches button events.
  */
 export async function scanAndConnectController() {
     state.set('controller_scanning', true);
@@ -156,20 +210,18 @@ export async function scanAndConnectController() {
         device.addEventListener('gattserverdisconnected', () => {
             console.log('[BLE] Controller disconnected');
             controllerServer = null;
-            state.update({
-                controller_status: 'disconnected',
-                controller_name:   '',
-            });
+            learnModeAction  = null;
+            learnModeCallback = null;
+            state.update({ controller_status: 'disconnected', controller_name: '' });
         });
 
         controllerServer = await device.gatt.connect();
         console.log('[BLE] Controller GATT connected');
 
-        // Try to subscribe to HID notifications
         let subscribed = false;
         try {
             const hidService = await controllerServer.getPrimaryService(HID_SERVICE);
-            const reports = await hidService.getCharacteristics(HID_REPORT);
+            const reports    = await hidService.getCharacteristics(HID_REPORT);
 
             for (const report of reports) {
                 try {
@@ -178,20 +230,18 @@ export async function scanAndConnectController() {
                         handleControllerReport(e.target.value);
                     });
                     subscribed = true;
-                    console.log('[BLE] Subscribed to HID report');
-                } catch (_) { /* not all report chars are notifiable */ }
+                    console.log('[BLE] Subscribed to HID report characteristic');
+                } catch (_) { /* not all chars support notifications */ }
             }
         } catch (err) {
-            console.warn('[BLE] HID service not found on controller:', err.message);
+            console.warn('[BLE] HID service not available:', err.message);
         }
 
         if (!subscribed) {
-            console.warn('[BLE] No HID notifications available — controller connected but no button events');
+            console.warn('[BLE] No HID notifications — controller connected but buttons may not work');
         }
 
         state.set('controller_status', 'connected');
-        console.log('[BLE] Controller ready');
-
         return device;
 
     } catch (err) {
@@ -207,18 +257,10 @@ export async function scanAndConnectController() {
 }
 
 /**
- * Parse a raw HID report and fire the appropriate action.
+ * Parse a raw HID report DataView.
  *
- * Most BLE cycling remotes send a 1–4 byte report:
- *   byte[0] = modifier / consumer page
- *   byte[1] = key / button code
- *
- * Common mappings (expand as needed for specific hardware):
- *   0x00 / 0xB5 → Next track  → Gear Up
- *   0x00 / 0xB6 → Prev track  → Gear Down
- *   0x00 / 0xCD → Play/Pause  → Pause ride
- *   0x01        (any)         → Button 1 → Gear Up
- *   0x02        (any)         → Button 2 → Gear Down
+ * In LEARN MODE: capture the signature and save it, then call the learn callback.
+ * In NORMAL MODE: compare against saved mappings and fire the matching action.
  */
 function handleControllerReport(dataView) {
     if (dataView.byteLength === 0) return;
@@ -226,15 +268,32 @@ function handleControllerReport(dataView) {
     const b0 = dataView.getUint8(0);
     const b1 = dataView.byteLength > 1 ? dataView.getUint8(1) : 0;
 
+    // Ignore pure release events (all zeros)
+    if (b0 === 0 && b1 === 0) return;
+
     console.log(`[BLE] Controller report: [${b0}, ${b1}]`);
 
-    // Consumer control codes (common for media remotes)
-    if (b1 === 0xB5 || b0 === 0x01) { fire('gearUp');   return; }
-    if (b1 === 0xB6 || b0 === 0x02) { fire('gearDown'); return; }
-    if (b1 === 0xCD || b0 === 0x04) { fire('pause');    return; }
+    // ── LEARN MODE ──────────────────────────────────────────────
+    if (learnModeAction !== null) {
+        saveButtonMapping(learnModeAction, b0, b1);
+        const cb = learnModeCallback;
+        learnModeAction   = null;
+        learnModeCallback = null;
+        if (cb) cb(b0, b1);
+        return;
+    }
 
-    // Fallback: any non-zero b0 alternates gear up/down
-    if (b0 !== 0) fire('gearUp');
+    // ── NORMAL MODE — match against saved map ───────────────────
+    const map = loadControllerMap();
+    for (const [action, sig] of Object.entries(map)) {
+        if (sig && sig.b0 === b0 && sig.b1 === b1) {
+            fire(action);
+            return;
+        }
+    }
+
+    // Nothing matched — log for debugging
+    console.log('[BLE] No mapping for this button. Open Devices → Configure to map it.');
 }
 
 function fire(action) {

@@ -19,15 +19,76 @@
             font-size: 0.58rem; font-weight: 700; text-transform: uppercase;
             letter-spacing: 0.14em; color: var(--text-muted); margin-bottom: 0.4rem;
         }
-        .controller-hint {
-            font-size: 0.72rem; color: var(--text-muted); margin-top: 0.5rem;
-            padding: 0.6rem 0.8rem; border-radius: var(--radius-sm);
-            background: rgba(255,255,255,0.03); border: 1px solid var(--border);
-            line-height: 1.5;
+
+        /* ── Button mapping panel ── */
+        #mapPanel {
+            width: 100%; max-width: 640px;
+            margin-top: 1rem;
+            display: none;
         }
-        .controller-hint kbd {
-            background: rgba(255,255,255,0.08); border-radius: 4px;
-            padding: 0.1rem 0.4rem; font-size: 0.68rem; font-family: inherit;
+        .map-header {
+            display: flex; align-items: center; justify-content: space-between;
+            margin-bottom: 0.8rem;
+        }
+        .map-title {
+            font-size: 0.78rem; font-weight: 700; color: var(--text);
+        }
+        .map-reset {
+            font-size: 0.65rem; color: var(--text-muted); background: none;
+            border: 1px solid var(--border); border-radius: var(--radius-sm);
+            padding: 0.22rem 0.6rem; cursor: pointer; font-family: inherit;
+            transition: all 0.2s;
+        }
+        .map-reset:hover { color: #EF4444; border-color: rgba(239,68,68,0.4); }
+
+        .map-action {
+            display: flex; align-items: center; gap: 0.8rem;
+            padding: 0.85rem 1rem;
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border);
+            background: var(--glass-bg);
+            margin-bottom: 0.5rem;
+            transition: border-color 0.2s;
+        }
+        .map-action.learning {
+            border-color: var(--primary);
+            background: var(--primary-dim);
+            animation: learningPulse 1s ease-in-out infinite;
+        }
+        .map-action.mapped { border-color: rgba(255,255,255,0.12); }
+
+        @keyframes learningPulse {
+            0%, 100% { box-shadow: 0 0 0 0 var(--primary-glow); }
+            50%       { box-shadow: 0 0 12px 2px var(--primary-glow); }
+        }
+
+        .map-icon { font-size: 1.2rem; width: 28px; text-align: center; flex-shrink: 0; }
+        .map-info { flex: 1; min-width: 0; }
+        .map-action-name {
+            font-size: 0.82rem; font-weight: 700; color: var(--text);
+        }
+        .map-action-status {
+            font-size: 0.65rem; color: var(--text-muted); margin-top: 0.1rem;
+        }
+        .map-action-status.ok   { color: var(--primary); }
+        .map-action-status.wait { color: var(--accent); }
+
+        .map-btn {
+            padding: 0.38rem 0.9rem;
+            font-family: inherit; font-size: 0.65rem; font-weight: 700;
+            letter-spacing: 0.05em; border-radius: var(--radius-sm);
+            border: 1px solid var(--border); background: transparent;
+            color: var(--text-secondary); cursor: pointer; transition: all 0.15s;
+            flex-shrink: 0;
+        }
+        .map-btn:hover {
+            border-color: var(--border-focus); color: var(--primary);
+            background: var(--primary-dim);
+        }
+        .map-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .map-btn.learning-btn {
+            border-color: var(--primary); color: var(--primary);
+            background: var(--primary-dim);
         }
     </style>
 </head>
@@ -41,7 +102,7 @@
             <a class="back-link" href="index.html">← Back to home</a>
         </div>
 
-        <!-- Connected devices -->
+        <!-- Connected devices list -->
         <div class="section stagger-1" style="max-width:640px;">
             <div class="section-title">Connected Devices</div>
             <div class="connected-list" id="connectedList">
@@ -65,10 +126,45 @@
                 <div class="scan-spinner" id="scanCtrlSpinner"></div>
                 <span id="scanCtrlLabel">Scan for Remote Controller</span>
             </button>
-            <div class="controller-hint">
-                Connect any BLE remote (Wahoo, Elite, generic). Buttons will be mapped to
-                <kbd>Gear Up</kbd> / <kbd>Gear Down</kbd> / <kbd>Pause</kbd>.<br>
-                You can also use <kbd>↑</kbd> <kbd>↓</kbd> arrow keys on a keyboard.
+        </div>
+
+        <!-- Button mapping panel (shown when controller is connected) -->
+        <div id="mapPanel" class="stagger-3">
+            <div class="map-header">
+                <div class="map-title">🗺 Configure Controller Buttons</div>
+                <button class="map-reset" onclick="window._resetMap()">Reset all</button>
+            </div>
+
+            <div class="map-action" id="mapRow-gearUp">
+                <div class="map-icon">⬆️</div>
+                <div class="map-info">
+                    <div class="map-action-name">Gear Up</div>
+                    <div class="map-action-status" id="mapStatus-gearUp">Not configured</div>
+                </div>
+                <button class="map-btn" id="mapBtn-gearUp" onclick="window._startLearn('gearUp')">Set</button>
+            </div>
+
+            <div class="map-action" id="mapRow-gearDown">
+                <div class="map-icon">⬇️</div>
+                <div class="map-info">
+                    <div class="map-action-name">Gear Down</div>
+                    <div class="map-action-status" id="mapStatus-gearDown">Not configured</div>
+                </div>
+                <button class="map-btn" id="mapBtn-gearDown" onclick="window._startLearn('gearDown')">Set</button>
+            </div>
+
+            <div class="map-action" id="mapRow-pause">
+                <div class="map-icon">⏸</div>
+                <div class="map-info">
+                    <div class="map-action-name">Pause / Resume</div>
+                    <div class="map-action-status" id="mapStatus-pause">Not configured</div>
+                </div>
+                <button class="map-btn" id="mapBtn-pause" onclick="window._startLearn('pause')">Set</button>
+            </div>
+
+            <div style="font-size:0.68rem;color:var(--text-muted);margin-top:0.6rem;line-height:1.5;">
+                💡 Click <strong>Set</strong> then press the physical button on your remote. The mapping is saved automatically.
+                You can also use <strong>↑ ↓ arrow keys</strong> on any keyboard — no configuration needed.
             </div>
         </div>
 
@@ -111,12 +207,19 @@
             scanAndConnectTrainer,
             scanAndConnectController,
             isWebBluetoothAvailable,
+            loadControllerMap,
+            clearControllerMap,
+            startLearnMode,
+            cancelLearnMode,
+            isLearning,
         } from './js/ble/manager.js';
         import { state } from './js/state.js';
 
+        const ACTIONS = ['gearUp', 'gearDown', 'pause'];
+
         if (!isWebBluetoothAvailable()) {
             document.querySelectorAll('.scan-area').forEach(el => {
-                el.innerHTML = '<div class="ble-not-supported">⚠️ Web Bluetooth not available. Use Chrome or Edge over HTTPS.</div>';
+                el.innerHTML = '<div class="ble-not-supported">⚠️ Web Bluetooth not available.<br>Use Chrome or Edge over HTTPS or localhost.</div>';
             });
         }
 
@@ -154,7 +257,81 @@
             spinner.style.display = 'none';
             label.textContent = device ? 'Scan for another controller' : 'Scan for Remote Controller';
             updateConnectedUI();
+
+            if (device) {
+                document.getElementById('mapPanel').style.display = 'block';
+                refreshMapUI();
+            }
         };
+
+        // ── Learn mode ───────────────────────────────────────────
+        window._startLearn = function(action) {
+            // Cancel any previous learn session
+            cancelLearnMode();
+
+            // Reset all rows to normal state
+            ACTIONS.forEach(a => {
+                document.getElementById('mapRow-' + a).classList.remove('learning');
+                const btn = document.getElementById('mapBtn-' + a);
+                btn.textContent = 'Set';
+                btn.classList.remove('learning-btn');
+            });
+
+            // Set this row to learning state
+            document.getElementById('mapRow-' + action).classList.add('learning');
+            const btn = document.getElementById('mapBtn-' + action);
+            btn.textContent = 'Press button…';
+            btn.classList.add('learning-btn');
+            document.getElementById('mapStatus-' + action).textContent = '⌛ Waiting for button press…';
+            document.getElementById('mapStatus-' + action).className = 'map-action-status wait';
+
+            startLearnMode(action, (b0, b1) => {
+                // Mapping captured
+                document.getElementById('mapRow-' + action).classList.remove('learning');
+                btn.textContent = 'Set';
+                btn.classList.remove('learning-btn');
+                refreshMapUI();
+            });
+        };
+
+        window._resetMap = function() {
+            if (!confirm('Reset all button mappings?')) return;
+            clearControllerMap();
+            cancelLearnMode();
+            ACTIONS.forEach(a => {
+                document.getElementById('mapRow-' + a).classList.remove('learning');
+                document.getElementById('mapBtn-' + a).classList.remove('learning-btn');
+                document.getElementById('mapBtn-' + a).textContent = 'Set';
+            });
+            refreshMapUI();
+        };
+
+        function refreshMapUI() {
+            const map = loadControllerMap();
+            ACTIONS.forEach(action => {
+                const sig    = map[action];
+                const status = document.getElementById('mapStatus-' + action);
+                if (sig) {
+                    status.textContent = `✓ Mapped (byte ${sig.b0}, ${sig.b1})`;
+                    status.className   = 'map-action-status ok';
+                    document.getElementById('mapRow-' + action).classList.add('mapped');
+                } else {
+                    status.textContent = 'Not configured';
+                    status.className   = 'map-action-status';
+                    document.getElementById('mapRow-' + action).classList.remove('mapped');
+                }
+            });
+        }
+
+        // Show mapping panel if controller was already connected before
+        const ctStatus = state.get('controller_status');
+        if (ctStatus === 'connected') {
+            document.getElementById('mapPanel').style.display = 'block';
+            refreshMapUI();
+        }
+
+        // Load existing map state on page open
+        refreshMapUI();
 
         // ── State listener ───────────────────────────────────────
         state.addEventListener('change', () => updateConnectedUI());
@@ -163,7 +340,6 @@
             const list = document.getElementById('connectedList');
             const rows = [];
 
-            // Trainer row
             const trStatus = state.get('trainer_status');
             const trName   = state.get('trainer_name');
             if (trStatus === 'connected' || trStatus === 'connecting') {
@@ -180,12 +356,11 @@
                     </div>`);
             }
 
-            // Controller row
-            const ctStatus = state.get('controller_status');
-            const ctName   = state.get('controller_name');
-            if (ctStatus === 'connected' || ctStatus === 'connecting') {
-                const dotClass   = ctStatus === 'connected' ? 'connected' : 'connecting';
-                const statusText = ctStatus === 'connected' ? 'Connected ✓' : 'Connecting…';
+            const ctStatus2 = state.get('controller_status');
+            const ctName    = state.get('controller_name');
+            if (ctStatus2 === 'connected' || ctStatus2 === 'connecting') {
+                const dotClass   = ctStatus2 === 'connected' ? 'connected' : 'connecting';
+                const statusText = ctStatus2 === 'connected' ? 'Connected ✓' : 'Connecting…';
                 rows.push(`
                     <div class="card device-row">
                         <div class="device-dot ${dotClass}"></div>
@@ -195,6 +370,9 @@
                         </div>
                         <span class="type-badge controller">controller</span>
                     </div>`);
+
+                document.getElementById('mapPanel').style.display = 'block';
+                refreshMapUI();
             }
 
             list.innerHTML = rows.length
