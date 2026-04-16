@@ -324,7 +324,6 @@
         import {
             scanAndConnectTrainer,
             scanAndConnectController,
-            autoReconnectControllers,
             isWebBluetoothAvailable,
             loadControllerMap,
             clearControllerMap,
@@ -503,9 +502,6 @@
         // Load existing map state on page open
         refreshMapUI();
         updateSlotsInfo();
-
-        // Auto-reconnect previously paired controllers
-        autoReconnectControllers();
 
         // ── State listener ───────────────────────────────────────
         state.addEventListener('change', () => {

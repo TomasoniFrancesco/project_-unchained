@@ -110,6 +110,28 @@
         .modal-status .status-icon { font-size:2rem; display:block; margin-bottom:8px; }
         .power-trend { font-size:0.55em; vertical-align:super; margin-left:3px; opacity:0.65; }
         .power-trend.up { color:#EF4444; } .power-trend.down { color:var(--primary); }
+
+        /* Controller connect bar */
+        .ctrl-bar {
+            position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+            display: flex; align-items: center; gap: 8px;
+            padding: 6px 16px; border-radius: 999px;
+            background: rgba(0,0,0,0.7); border: 1px solid rgba(255,255,255,0.1);
+            backdrop-filter: blur(8px); z-index: 100;
+            font-size: 0.7rem; color: rgba(255,255,255,0.7);
+            transition: all 0.3s;
+        }
+        .ctrl-bar.connected { border-color: var(--primary); }
+        .ctrl-dot { width:8px; height:8px; border-radius:50%; background:#EF4444; flex-shrink:0; }
+        .ctrl-dot.on { background: var(--primary); box-shadow: 0 0 6px var(--primary); }
+        .ctrl-connect-btn {
+            background: var(--primary); color: #000; border: none; cursor: pointer;
+            font-family: inherit; font-size: 0.65rem; font-weight: 700;
+            padding: 4px 12px; border-radius: 999px;
+            transition: opacity 0.2s;
+        }
+        .ctrl-connect-btn:hover { opacity: 0.85; }
+        .ctrl-connect-btn.scanning { opacity:0.6; pointer-events:none; }
     </style>
 </head>
 
@@ -129,6 +151,14 @@
                 <button class="action-btn pause" id="pauseBtn" onclick="window._togglePause()">⏸ Pause</button>
                 <button class="action-btn stop" onclick="window._openStopModal()">■ Stop</button>
             </div>
+        </div>
+
+        <!-- Controller connect bar -->
+        <div class="ctrl-bar" id="ctrlBar">
+            <span class="ctrl-dot" id="ctrlDot1"></span>
+            <span class="ctrl-dot" id="ctrlDot2"></span>
+            <span id="ctrlLabel">No controller</span>
+            <button class="ctrl-connect-btn" id="ctrlConnectBtn" onclick="window._connectCtrl()">🎮 Connect</button>
         </div>
 
         <div class="center-hud">
@@ -221,11 +251,14 @@
         import { state } from './js/state.js';
         import { startRide, stopRide, togglePause, gearUp, gearDown, finalizeRide, getRoutePoints, getRideTotalDistance } from './js/engine/ride.js';
         import { loadProfile } from './js/storage/profile.js';
-        import { setControllerCallbacks, autoReconnectControllers } from './js/ble/manager.js';
+        import { setControllerCallbacks, scanAndConnectController, isControllerConnected, getControllerInfo } from './js/ble/manager.js';
 
         // ── Load route from sessionStorage ──
         const routeRaw = sessionStorage.getItem('fz_selected_route');
-        if (!routeRaw) { window.location.href = 'routes.html'; }
+        if (!routeRaw) {
+            window.location.href = 'routes.html';
+            throw new Error('No route selected — redirecting');
+        }
         const route = JSON.parse(routeRaw);
 
         document.getElementById('routeNameLabel').textContent = route.name;
@@ -242,8 +275,45 @@
             pause:    () => window._togglePause(),
         });
 
-        // ── Auto-reconnect controllers from previous page ──
-        autoReconnectControllers();
+        // ── Controller connect from ride page ──
+        function updateCtrlBar() {
+            const c1 = getControllerInfo(0);
+            const c2 = getControllerInfo(1);
+            const dot1 = document.getElementById('ctrlDot1');
+            const dot2 = document.getElementById('ctrlDot2');
+            const label = document.getElementById('ctrlLabel');
+            const bar = document.getElementById('ctrlBar');
+            const btn = document.getElementById('ctrlConnectBtn');
+
+            dot1.className = 'ctrl-dot' + (c1.connected ? ' on' : '');
+            dot2.className = 'ctrl-dot' + (c2.connected ? ' on' : '');
+
+            const names = [c1, c2].filter(c => c.connected).map(c => c.name);
+            if (names.length > 0) {
+                label.textContent = names.join(' + ');
+                bar.classList.add('connected');
+                btn.textContent = names.length < 2 ? '+ Add' : '✓';
+                btn.disabled = names.length >= 2;
+            } else {
+                label.textContent = 'No controller';
+                bar.classList.remove('connected');
+                btn.textContent = '🎮 Connect';
+                btn.disabled = false;
+            }
+        }
+
+        window._connectCtrl = async function() {
+            const btn = document.getElementById('ctrlConnectBtn');
+            btn.classList.add('scanning');
+            btn.textContent = 'Scanning…';
+            await scanAndConnectController('all');
+            btn.classList.remove('scanning');
+            updateCtrlBar();
+        };
+
+        // Update bar on state changes
+        state.addEventListener('change', updateCtrlBar);
+        updateCtrlBar();
 
         // ── Canvas ──
         let routePoints = route.points || [];

@@ -4,7 +4,6 @@
  *
  * Controllers: supports up to 2 simultaneous controllers.
  * Uses universal service discovery — works with any BLE service.
- * Auto-reconnects controllers on page navigation via getDevices() API.
  */
 
 import { state } from '../state.js';
@@ -17,7 +16,6 @@ import { FTMS_SERVICE, subscribeIndoorBikeData, getControlPoint, requestControl 
 // localStorage keys
 const CUSTOM_UUID_KEY = 'fz_custom_service_uuids';
 const MAP_KEY         = 'fz_controller_map';
-const SAVED_CTRL_KEY  = 'fz_saved_controllers';   // persisted device info for reconnect
 
 /**
  * Build full 128-bit UUID from 16-bit short form.
@@ -27,20 +25,11 @@ function uuid16(short) {
 }
 
 /**
- * Comprehensive list of non-blocklisted BLE services commonly found
- * on remote controllers, buttons, and cycling accessories.
+ * Comprehensive list of non-blocklisted BLE services.
  */
 const KNOWN_CONTROLLER_SERVICES = [
-    // ── Standard GATT services (non-blocklisted) ──
-    uuid16('1800'),   // Generic Access
-    uuid16('1801'),   // Generic Attribute
-    uuid16('180a'),   // Device Information
-    uuid16('180f'),   // Battery Service
-    uuid16('1816'),   // Cycling Speed and Cadence
-    uuid16('1818'),   // Cycling Power
-    uuid16('1826'),   // Fitness Machine (FTMS)
-
-    // ── Common proprietary services (0xFFxx range) ──
+    uuid16('1800'), uuid16('1801'), uuid16('180a'), uuid16('180f'),
+    uuid16('1816'), uuid16('1818'), uuid16('1826'),
     uuid16('ff00'), uuid16('ff01'), uuid16('ff02'), uuid16('ff03'),
     uuid16('ff04'), uuid16('ff05'), uuid16('ff06'), uuid16('ff07'),
     uuid16('ff08'), uuid16('ff09'), uuid16('ff0a'), uuid16('ff0b'),
@@ -53,22 +42,18 @@ const KNOWN_CONTROLLER_SERVICES = [
     uuid16('fff5'), uuid16('fff6'), uuid16('fff7'), uuid16('fff8'),
     uuid16('fff9'), uuid16('fffa'), uuid16('fffb'), uuid16('fffc'),
     uuid16('fffd'), uuid16('fffe'),
-
-    // ── Common proprietary services (0xFExx range — Bluetooth SIG members) ──
     uuid16('fee0'), uuid16('fee1'), uuid16('fee2'), uuid16('fee3'),
     uuid16('fee4'), uuid16('fee5'), uuid16('fee6'), uuid16('fee7'),
     uuid16('fee8'), uuid16('fee9'), uuid16('feea'), uuid16('feeb'),
     uuid16('feec'), uuid16('feed'), uuid16('feee'), uuid16('feef'),
     uuid16('fef0'), uuid16('fef1'), uuid16('fef2'), uuid16('fef3'),
     uuid16('fef4'), uuid16('fef5'),
-
-    // ── Common proprietary (cycling remotes like Tacx, Wahoo, Elite) ──
     uuid16('fd00'), uuid16('fd01'), uuid16('fd02'),
     uuid16('fc00'), uuid16('fc01'), uuid16('fc02'),
     uuid16('fb00'), uuid16('fb01'), uuid16('fb02'),
     uuid16('fa00'), uuid16('fa01'), uuid16('fa02'),
-    uuid16('6e40'),  // Nordic UART Service (short form)
-    '6e400001-b5a3-f393-e0a9-e50e24dcca9e',  // Nordic UART Service (full)
+    uuid16('6e40'),
+    '6e400001-b5a3-f393-e0a9-e50e24dcca9e',
 ];
 
 // ── Trainer state ──────────────────────────────────────────────────
@@ -80,8 +65,8 @@ let onTrainerData       = null;
 
 // ── Controllers state (2 slots) ───────────────────────────────────
 const controllers = [
-    { device: null, server: null, name: '', status: 'disconnected' },  // slot 0 → controller_1
-    { device: null, server: null, name: '', status: 'disconnected' },  // slot 1 → controller_2
+    { device: null, server: null, name: '', status: 'disconnected' },
+    { device: null, server: null, name: '', status: 'disconnected' },
 ];
 
 // ── Learn mode ────────────────────────────────────────────────────
@@ -100,13 +85,9 @@ export function setControllerCallbacks(cb) {
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  BUTTON MAP — localStorage persistence
-//  Now captures ALL bytes of the report for better differentiation.
+//  BUTTON MAP
 // ══════════════════════════════════════════════════════════════════
 
-/**
- * Convert a DataView to an array of bytes (for signature).
- */
 function dataViewToBytes(dataView) {
     const bytes = [];
     for (let i = 0; i < dataView.byteLength; i++) {
@@ -115,10 +96,6 @@ function dataViewToBytes(dataView) {
     return bytes;
 }
 
-/**
- * Load saved button mappings from localStorage.
- * Returns { gearUp: { bytes: [...] }, gearDown: { bytes: [...] }, pause: { bytes: [...] } }
- */
 export function loadControllerMap() {
     try {
         return JSON.parse(localStorage.getItem(MAP_KEY)) || {};
@@ -127,9 +104,6 @@ export function loadControllerMap() {
     }
 }
 
-/**
- * Save a single action's button signature to localStorage.
- */
 export function saveButtonMapping(action, bytes) {
     const map = loadControllerMap();
     map[action] = { bytes };
@@ -137,17 +111,11 @@ export function saveButtonMapping(action, bytes) {
     console.log(`[BLE] Saved mapping: ${action} → [${bytes.join(', ')}]`);
 }
 
-/**
- * Clear all saved button mappings.
- */
 export function clearControllerMap() {
     localStorage.removeItem(MAP_KEY);
     console.log('[BLE] Controller map cleared');
 }
 
-/**
- * Start learn mode.
- */
 export function startLearnMode(action, callback) {
     learnModeAction   = action;
     learnModeCallback = callback;
@@ -164,33 +132,7 @@ export function isLearning() {
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  SAVED CONTROLLERS — localStorage persistence for reconnect
-// ══════════════════════════════════════════════════════════════════
-
-function loadSavedControllers() {
-    try {
-        return JSON.parse(localStorage.getItem(SAVED_CTRL_KEY)) || [];
-    } catch {
-        return [];
-    }
-}
-
-function saveControllerInfo(slot, name, id) {
-    const saved = loadSavedControllers();
-    saved[slot] = { name, id };
-    localStorage.setItem(SAVED_CTRL_KEY, JSON.stringify(saved));
-}
-
-function clearSavedController(slot) {
-    const saved = loadSavedControllers();
-    if (saved[slot]) {
-        saved[slot] = null;
-        localStorage.setItem(SAVED_CTRL_KEY, JSON.stringify(saved));
-    }
-}
-
-// ══════════════════════════════════════════════════════════════════
-//  CUSTOM SERVICE UUIDs — localStorage
+//  CUSTOM SERVICE UUIDs
 // ══════════════════════════════════════════════════════════════════
 
 export function loadCustomServiceUUIDs() {
@@ -328,7 +270,6 @@ function syncControllerState(slot) {
 
 /**
  * Subscribe to all notifiable characteristics on a connected GATT server.
- * Returns true if at least one subscription was established.
  */
 async function subscribeAllNotifiable(server, label) {
     let subscribed = false;
@@ -347,25 +288,27 @@ async function subscribeAllNotifiable(server, label) {
                                 handleControllerReport(e.target.value);
                             });
                             subscribed = true;
-                            console.log(`[BLE] ${label}: subscribed to ${service.uuid} / ${char.uuid}`);
+                            console.log(`[BLE] ${label}: subscribed ${service.uuid} / ${char.uuid}`);
                         } catch (_) { /* skip */ }
                     }
                 }
-            } catch (_) { /* skip inaccessible service */ }
+            } catch (_) { /* skip */ }
         }
     } catch (err) {
-        console.warn(`[BLE] ${label}: service discovery failed:`, err.message);
+        console.warn(`[BLE] ${label}: discovery failed:`, err.message);
     }
     return subscribed;
 }
 
 /**
  * Scan and connect to a BLE remote controller.
+ * Connection lives in current page context — no persistence across pages.
+ * Both connect.html and ride.html can initiate connections.
  */
 export async function scanAndConnectController(mode = 'all') {
     const slot = findFreeSlot();
     if (slot === -1) {
-        console.warn('[BLE] Both controller slots are occupied. Disconnect one first.');
+        console.warn('[BLE] Both controller slots occupied.');
         return null;
     }
 
@@ -379,6 +322,7 @@ export async function scanAndConnectController(mode = 'all') {
         if (mode === 'filtered') {
             requestOptions = {
                 filters: [
+                    { namePrefix: 'Zwift' },
                     { namePrefix: 'Remote' },
                     { namePrefix: 'Controller' },
                     { namePrefix: 'Tacx' },
@@ -388,10 +332,10 @@ export async function scanAndConnectController(mode = 'all') {
                     { namePrefix: 'Shutter' },
                     { namePrefix: 'AB Shutter' },
                     { namePrefix: 'iTAG' },
-                    { namePrefix: 'Bluetooth' },
                     { namePrefix: 'BT' },
                     { namePrefix: 'Gamepad' },
                     { namePrefix: 'Media' },
+                    { namePrefix: 'Click' },
                 ],
                 optionalServices,
             };
@@ -426,23 +370,18 @@ export async function scanAndConnectController(mode = 'all') {
         const subscribed = await subscribeAllNotifiable(ctrl.server, `Controller ${n}`);
 
         if (!subscribed) {
-            console.warn(`[BLE] Controller ${n}: no notifiable characteristics found — buttons won't work.`);
-            console.warn('[BLE] Try adding your controller\'s service UUID in the custom UUID field.');
+            console.warn(`[BLE] Controller ${n}: no notifiable characteristics — buttons won't work.`);
         }
 
         ctrl.status = 'connected';
         syncControllerState(slot);
-
-        // Save to localStorage for auto-reconnect on other pages
-        saveControllerInfo(slot, ctrl.name, device.id || device.name);
-
-        console.log(`[BLE] Controller ${n} fully connected (slot ${slot}), subscribed: ${subscribed}`);
+        console.log(`[BLE] Controller ${n} ready (subscribed: ${subscribed})`);
         return { device, slot };
 
     } catch (err) {
         state.set(`controller_${slot + 1}_status`, 'disconnected');
         if (err.name === 'NotFoundError') {
-            console.log('[BLE] Controller selection cancelled');
+            console.log('[BLE] Controller scan cancelled');
         } else {
             console.error('[BLE] Controller connection failed:', err);
         }
@@ -451,176 +390,18 @@ export async function scanAndConnectController(mode = 'all') {
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  AUTO-RECONNECT — restores BLE connections after page navigation
-// ══════════════════════════════════════════════════════════════════
-
-/**
- * Try to auto-reconnect previously paired controllers.
- * Uses navigator.bluetooth.getDevices() to retrieve paired devices
- * and re-establish GATT connections + notification subscriptions.
- *
- * Call this on every page that needs controller input (ride.html, connect.html).
- */
-export async function autoReconnectControllers() {
-    // Check if getDevices() API is available
-    if (!navigator.bluetooth || !navigator.bluetooth.getDevices) {
-        console.log('[BLE] getDevices() not available — auto-reconnect disabled');
-        return;
-    }
-
-    const saved = loadSavedControllers();
-    if (!saved || saved.every(s => !s)) {
-        console.log('[BLE] No saved controllers to reconnect');
-        return;
-    }
-
-    console.log('[BLE] Attempting auto-reconnect for saved controllers...');
-
-    try {
-        const devices = await navigator.bluetooth.getDevices();
-        console.log(`[BLE] Found ${devices.length} previously paired device(s)`);
-
-        for (let slot = 0; slot < 2; slot++) {
-            const info = saved[slot];
-            if (!info) continue;
-
-            // Skip if this slot is already connected
-            if (controllers[slot].server && controllers[slot].server.connected) {
-                console.log(`[BLE] Controller ${slot + 1} already connected, skipping`);
-                continue;
-            }
-
-            // Find the matching device
-            const device = devices.find(d =>
-                (d.id && d.id === info.id) || (d.name && d.name === info.name)
-            );
-
-            if (!device) {
-                console.log(`[BLE] Controller ${slot + 1} (${info.name}) not found in paired devices`);
-                continue;
-            }
-
-            const n = slot + 1;
-            const ctrl = controllers[slot];
-
-            try {
-                ctrl.device = device;
-                ctrl.name   = device.name || info.name;
-                ctrl.status = 'connecting';
-                syncControllerState(slot);
-
-                // Listen for advertisements to detect the device
-                const abortController = new AbortController();
-
-                device.addEventListener('advertisementreceived', async (event) => {
-                    abortController.abort();
-                    console.log(`[BLE] Controller ${n} advertisement received, connecting...`);
-
-                    try {
-                        ctrl.server = await device.gatt.connect();
-                        console.log(`[BLE] Controller ${n} auto-reconnected`);
-
-                        device.addEventListener('gattserverdisconnected', () => {
-                            console.log(`[BLE] Controller ${n} disconnected`);
-                            ctrl.server = null;
-                            ctrl.status = 'disconnected';
-                            ctrl.name   = '';
-                            syncControllerState(slot);
-                        });
-
-                        const subscribed = await subscribeAllNotifiable(ctrl.server, `Controller ${n}`);
-                        ctrl.status = 'connected';
-                        syncControllerState(slot);
-                        console.log(`[BLE] Controller ${n} auto-reconnect complete, subscribed: ${subscribed}`);
-                    } catch (err) {
-                        console.warn(`[BLE] Controller ${n} auto-reconnect GATT failed:`, err.message);
-                        ctrl.status = 'disconnected';
-                        ctrl.name = '';
-                        syncControllerState(slot);
-                    }
-                });
-
-                // Start watching for advertisements (with timeout)
-                try {
-                    await device.watchAdvertisements({ signal: abortController.signal });
-                    console.log(`[BLE] Watching for Controller ${n} (${info.name}) advertisements...`);
-
-                    // Timeout: give up after 8 seconds
-                    setTimeout(() => {
-                        if (ctrl.status !== 'connected') {
-                            abortController.abort();
-                            console.log(`[BLE] Controller ${n} auto-reconnect timed out`);
-                            // Try direct connection as fallback
-                            directReconnect(slot, device);
-                        }
-                    }, 8000);
-                } catch (err) {
-                    console.log(`[BLE] watchAdvertisements not supported, trying direct connect`);
-                    await directReconnect(slot, device);
-                }
-
-            } catch (err) {
-                console.warn(`[BLE] Controller ${n} auto-reconnect failed:`, err.message);
-                ctrl.status = 'disconnected';
-                ctrl.name = '';
-                syncControllerState(slot);
-            }
-        }
-    } catch (err) {
-        console.warn('[BLE] Auto-reconnect failed:', err.message);
-    }
-}
-
-/**
- * Direct reconnection attempt (fallback when watchAdvertisements isn't available).
- */
-async function directReconnect(slot, device) {
-    const n = slot + 1;
-    const ctrl = controllers[slot];
-
-    try {
-        ctrl.server = await device.gatt.connect();
-        console.log(`[BLE] Controller ${n} direct reconnected`);
-
-        device.addEventListener('gattserverdisconnected', () => {
-            console.log(`[BLE] Controller ${n} disconnected`);
-            ctrl.server = null;
-            ctrl.status = 'disconnected';
-            ctrl.name   = '';
-            syncControllerState(slot);
-        });
-
-        const subscribed = await subscribeAllNotifiable(ctrl.server, `Controller ${n}`);
-        ctrl.status = 'connected';
-        syncControllerState(slot);
-        console.log(`[BLE] Controller ${n} direct reconnect complete, subscribed: ${subscribed}`);
-    } catch (err) {
-        console.warn(`[BLE] Controller ${n} direct reconnect failed:`, err.message);
-        ctrl.status = 'disconnected';
-        ctrl.name = '';
-        syncControllerState(slot);
-    }
-}
-
-// ══════════════════════════════════════════════════════════════════
 //  CONTROLLER REPORT HANDLER
 // ══════════════════════════════════════════════════════════════════
 
-/**
- * Parse a raw report DataView from any controller.
- * Captures ALL bytes for signature matching (not just first 2).
- */
 function handleControllerReport(dataView) {
     if (dataView.byteLength === 0) return;
 
     const bytes = dataViewToBytes(dataView);
-
-    // Ignore pure release events (all zeros)
     if (bytes.every(b => b === 0)) return;
 
-    console.log(`[BLE] Controller report: [${bytes.join(', ')}]`);
+    console.log(`[BLE] Report: [${bytes.join(', ')}]`);
 
-    // ── LEARN MODE ──────────────────────────────────────────────
+    // ── LEARN MODE ──
     if (learnModeAction !== null) {
         saveButtonMapping(learnModeAction, bytes);
         const cb = learnModeCallback;
@@ -630,14 +411,14 @@ function handleControllerReport(dataView) {
         return;
     }
 
-    // ── NORMAL MODE — match against saved map ───────────────────
+    // ── NORMAL MODE — match saved mappings ──
     const map = loadControllerMap();
     for (const [action, sig] of Object.entries(map)) {
         if (sig && sig.bytes && arraysEqual(sig.bytes, bytes)) {
             fire(action);
             return;
         }
-        // Legacy support: old format with b0/b1
+        // Legacy support (old b0/b1 format)
         if (sig && sig.b0 !== undefined) {
             if (sig.b0 === bytes[0] && sig.b1 === (bytes[1] || 0)) {
                 fire(action);
@@ -646,7 +427,7 @@ function handleControllerReport(dataView) {
         }
     }
 
-    console.log('[BLE] No mapping for this button. Open Devices → Configure to map it.');
+    console.log('[BLE] No mapping for this button.');
 }
 
 function arraysEqual(a, b) {
@@ -660,9 +441,9 @@ function arraysEqual(a, b) {
 function fire(action) {
     if (controllerCallbacks[action]) {
         controllerCallbacks[action]();
-        console.log(`[BLE] Controller action fired: ${action}`);
+        console.log(`[BLE] → ${action}`);
     } else {
-        console.log(`[BLE] Action ${action} matched but no callback registered`);
+        console.log(`[BLE] Action "${action}" matched but no callback set (not on ride page?)`);
     }
 }
 
@@ -695,7 +476,6 @@ export function disconnectController(slot) {
     c.name   = '';
     c.status = 'disconnected';
     syncControllerState(slot);
-    clearSavedController(slot);
 }
 
 // ══════════════════════════════════════════════════════════════════
