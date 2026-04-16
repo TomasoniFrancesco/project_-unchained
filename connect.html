@@ -4,17 +4,31 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FUCK ZWIFT — Devices</title>
-    <meta name="description" content="Connect your Bluetooth smart trainer to FUCK ZWIFT.">
+    <meta name="description" content="Connect your Bluetooth smart trainer and remote controller to FUCK ZWIFT.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
     <style>
         .connect-page .section { max-width: 640px; }
         .connected-list { display: flex; flex-direction: column; gap: 0.5rem; }
-        .scan-area { width: 100%; max-width: 640px; margin-bottom: 1rem; }
+        .scan-area { width: 100%; max-width: 640px; margin-bottom: 0.75rem; }
         .empty-connected { font-size: 0.75rem; color: var(--text-muted); text-align: center; padding: 1.2rem; }
         .done-area { width: 100%; max-width: 640px; margin-top: 1.5rem; }
         .ble-not-supported { text-align: center; padding: 3rem 1rem; color: var(--text-muted); font-size: 0.85rem; }
+        .scan-section-label {
+            font-size: 0.58rem; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.14em; color: var(--text-muted); margin-bottom: 0.4rem;
+        }
+        .controller-hint {
+            font-size: 0.72rem; color: var(--text-muted); margin-top: 0.5rem;
+            padding: 0.6rem 0.8rem; border-radius: var(--radius-sm);
+            background: rgba(255,255,255,0.03); border: 1px solid var(--border);
+            line-height: 1.5;
+        }
+        .controller-hint kbd {
+            background: rgba(255,255,255,0.08); border-radius: 4px;
+            padding: 0.1rem 0.4rem; font-size: 0.68rem; font-family: inherit;
+        }
     </style>
 </head>
 <body class="with-mountains">
@@ -35,21 +49,31 @@
             </div>
         </div>
 
-        <!-- Scan -->
+        <!-- Trainer scan -->
         <div class="scan-area stagger-2">
-            <button class="scan-btn" id="scanBtn" onclick="window._scanTrainer()">
-                <div class="scan-spinner" id="scanSpinner"></div>
-                <span id="scanLabel">Scan for Bluetooth Trainer</span>
+            <div class="scan-section-label">🚴 Smart Trainer (FTMS)</div>
+            <button class="scan-btn" id="scanTrainerBtn" onclick="window._scanTrainer()">
+                <div class="scan-spinner" id="scanTrainerSpinner"></div>
+                <span id="scanTrainerLabel">Scan for Bluetooth Trainer</span>
             </button>
         </div>
 
-        <div class="intro-box stagger-3" style="max-width:640px;">
-            💡 <strong>Web Bluetooth</strong> richiede un'azione utente per la scansione. 
-            Clicca il bottone sopra, poi seleziona il tuo trainer dal popup del browser.
+        <!-- Controller scan -->
+        <div class="scan-area stagger-3">
+            <div class="scan-section-label">🎮 Remote Controller</div>
+            <button class="scan-btn" id="scanCtrlBtn" onclick="window._scanController()">
+                <div class="scan-spinner" id="scanCtrlSpinner"></div>
+                <span id="scanCtrlLabel">Scan for Remote Controller</span>
+            </button>
+            <div class="controller-hint">
+                Connect any BLE remote (Wahoo, Elite, generic). Buttons will be mapped to
+                <kbd>Gear Up</kbd> / <kbd>Gear Down</kbd> / <kbd>Pause</kbd>.<br>
+                You can also use <kbd>↑</kbd> <kbd>↓</kbd> arrow keys on a keyboard.
+            </div>
         </div>
 
         <div class="done-area stagger-4">
-            <a class="btn btn-primary btn-full" href="routes.html">Vai ai Percorsi →</a>
+            <a class="btn btn-primary btn-full" href="routes.html">Go to Routes →</a>
             <div style="text-align:center;margin-top:0.8rem;">
                 <a class="back-link" href="index.html">← Back to Home</a>
             </div>
@@ -71,6 +95,10 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                 History
             </a>
+            <a class="bottom-nav-item active" href="connect.html">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+                Devices
+            </a>
             <a class="bottom-nav-item" href="profile.html">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
                 Profile
@@ -79,53 +107,99 @@
     </nav>
 
     <script type="module">
-        import { scanAndConnectTrainer, isWebBluetoothAvailable, isTrainerConnected } from './js/ble/manager.js';
+        import {
+            scanAndConnectTrainer,
+            scanAndConnectController,
+            isWebBluetoothAvailable,
+        } from './js/ble/manager.js';
         import { state } from './js/state.js';
 
         if (!isWebBluetoothAvailable()) {
-            document.querySelector('.scan-area').innerHTML = '<div class="ble-not-supported">⚠️ Web Bluetooth non disponibile. Usa Chrome o Edge.</div>';
+            document.querySelectorAll('.scan-area').forEach(el => {
+                el.innerHTML = '<div class="ble-not-supported">⚠️ Web Bluetooth not available. Use Chrome or Edge over HTTPS.</div>';
+            });
         }
 
+        // ── Trainer ──────────────────────────────────────────────
         window._scanTrainer = async function() {
-            const btn = document.getElementById('scanBtn');
-            const spinner = document.getElementById('scanSpinner');
-            const label = document.getElementById('scanLabel');
+            const btn     = document.getElementById('scanTrainerBtn');
+            const spinner = document.getElementById('scanTrainerSpinner');
+            const label   = document.getElementById('scanTrainerLabel');
 
             btn.classList.add('scanning');
             spinner.style.display = 'block';
-            label.textContent = 'Seleziona il tuo trainer…';
+            label.textContent = 'Select your trainer…';
 
             const device = await scanAndConnectTrainer();
 
             btn.classList.remove('scanning');
             spinner.style.display = 'none';
-            label.textContent = device ? 'Scan for another device' : 'Scan for Bluetooth Trainer';
-
+            label.textContent = device ? 'Scan for another trainer' : 'Scan for Bluetooth Trainer';
             updateConnectedUI();
         };
 
+        // ── Controller ───────────────────────────────────────────
+        window._scanController = async function() {
+            const btn     = document.getElementById('scanCtrlBtn');
+            const spinner = document.getElementById('scanCtrlSpinner');
+            const label   = document.getElementById('scanCtrlLabel');
+
+            btn.classList.add('scanning');
+            spinner.style.display = 'block';
+            label.textContent = 'Select your remote…';
+
+            const device = await scanAndConnectController();
+
+            btn.classList.remove('scanning');
+            spinner.style.display = 'none';
+            label.textContent = device ? 'Scan for another controller' : 'Scan for Remote Controller';
+            updateConnectedUI();
+        };
+
+        // ── State listener ───────────────────────────────────────
         state.addEventListener('change', () => updateConnectedUI());
 
         function updateConnectedUI() {
             const list = document.getElementById('connectedList');
-            const status = state.get('trainer_status');
-            const name = state.get('trainer_name');
+            const rows = [];
 
-            if (status === 'connected' || status === 'connecting') {
-                const dotClass = status === 'connected' ? 'connected' : 'connecting';
-                const statusText = status === 'connected' ? 'Connected ✓' : 'Connecting…';
-                list.innerHTML = `
+            // Trainer row
+            const trStatus = state.get('trainer_status');
+            const trName   = state.get('trainer_name');
+            if (trStatus === 'connected' || trStatus === 'connecting') {
+                const dotClass   = trStatus === 'connected' ? 'connected' : 'connecting';
+                const statusText = trStatus === 'connected' ? 'Connected ✓' : 'Connecting…';
+                rows.push(`
                     <div class="card device-row">
                         <div class="device-dot ${dotClass}"></div>
                         <div style="flex:1;min-width:0;">
-                            <div class="device-name">${name || 'Smart Trainer'}</div>
+                            <div class="device-name">${trName || 'Smart Trainer'}</div>
                             <div class="device-meta">${statusText}</div>
                         </div>
                         <span class="type-badge trainer">trainer</span>
-                    </div>`;
-            } else {
-                list.innerHTML = '<div class="empty-connected">No devices connected yet</div>';
+                    </div>`);
             }
+
+            // Controller row
+            const ctStatus = state.get('controller_status');
+            const ctName   = state.get('controller_name');
+            if (ctStatus === 'connected' || ctStatus === 'connecting') {
+                const dotClass   = ctStatus === 'connected' ? 'connected' : 'connecting';
+                const statusText = ctStatus === 'connected' ? 'Connected ✓' : 'Connecting…';
+                rows.push(`
+                    <div class="card device-row">
+                        <div class="device-dot ${dotClass}"></div>
+                        <div style="flex:1;min-width:0;">
+                            <div class="device-name">${ctName || 'Remote Controller'}</div>
+                            <div class="device-meta">${statusText}</div>
+                        </div>
+                        <span class="type-badge controller">controller</span>
+                    </div>`);
+            }
+
+            list.innerHTML = rows.length
+                ? rows.join('')
+                : '<div class="empty-connected">No devices connected yet</div>';
         }
     </script>
 </body>

@@ -221,6 +221,7 @@
         import { state } from './js/state.js';
         import { startRide, stopRide, togglePause, gearUp, gearDown, finalizeRide, getRoutePoints, getRideTotalDistance } from './js/engine/ride.js';
         import { loadProfile } from './js/storage/profile.js';
+        import { setControllerCallbacks } from './js/ble/manager.js';
 
         // ── Load route from sessionStorage ──
         const routeRaw = sessionStorage.getItem('fz_selected_route');
@@ -233,6 +234,13 @@
         startRide(route);
         const profile = loadProfile();
         const riderWeight = profile.weight_kg || 75;
+
+        // ── Wire BLE remote controller → ride actions ──
+        setControllerCallbacks({
+            gearUp:   () => gearUp(),
+            gearDown: () => gearDown(),
+            pause:    () => window._togglePause(),
+        });
 
         // ── Canvas ──
         let routePoints = route.points || [];
