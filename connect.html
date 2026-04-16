@@ -20,6 +20,88 @@
             letter-spacing: 0.14em; color: var(--text-muted); margin-bottom: 0.4rem;
         }
 
+        /* ── Controller scan buttons row ── */
+        .scan-btn-row {
+            display: flex; gap: 0.5rem; width: 100%;
+        }
+        .scan-btn-row .scan-btn {
+            flex: 1;
+        }
+        .scan-btn-secondary {
+            background: transparent !important;
+            border-color: var(--border) !important;
+            color: var(--text-muted) !important;
+            font-size: 0.68rem !important;
+        }
+        .scan-btn-secondary:hover {
+            border-color: var(--border-focus) !important;
+            color: var(--text-secondary) !important;
+            background: var(--primary-dim) !important;
+        }
+
+        /* ── Custom UUID section ── */
+        .custom-uuid-section {
+            width: 100%; max-width: 640px;
+            margin-top: 0.5rem;
+        }
+        .custom-uuid-toggle {
+            font-size: 0.62rem; color: var(--text-muted); background: none;
+            border: none; cursor: pointer; font-family: inherit;
+            text-decoration: underline; padding: 0;
+            transition: color 0.2s;
+        }
+        .custom-uuid-toggle:hover { color: var(--primary); }
+        .custom-uuid-body {
+            display: none; margin-top: 0.5rem;
+            padding: 0.8rem;
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border);
+            background: var(--glass-bg);
+        }
+        .custom-uuid-body.open { display: block; }
+        .uuid-input-row {
+            display: flex; gap: 0.4rem; margin-bottom: 0.5rem;
+        }
+        .uuid-input-row input {
+            flex: 1; padding: 0.4rem 0.6rem;
+            font-size: 0.7rem; font-family: 'Courier New', monospace;
+            background: rgba(255,255,255,0.05); color: var(--text);
+            border: 1px solid var(--border); border-radius: var(--radius-sm);
+            outline: none; transition: border-color 0.2s;
+        }
+        .uuid-input-row input:focus { border-color: var(--primary); }
+        .uuid-input-row input::placeholder { color: var(--text-muted); opacity: 0.6; }
+        .uuid-add-btn {
+            padding: 0.4rem 0.8rem; font-family: inherit;
+            font-size: 0.65rem; font-weight: 700;
+            border: 1px solid var(--primary); border-radius: var(--radius-sm);
+            background: var(--primary-dim); color: var(--primary);
+            cursor: pointer; transition: all 0.15s; white-space: nowrap;
+        }
+        .uuid-add-btn:hover { background: var(--primary); color: #fff; }
+        .uuid-list { list-style: none; padding: 0; margin: 0; }
+        .uuid-list li {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0.3rem 0; font-size: 0.65rem;
+            font-family: 'Courier New', monospace; color: var(--text-secondary);
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+        }
+        .uuid-list li:last-child { border-bottom: none; }
+        .uuid-remove {
+            font-size: 0.6rem; color: var(--text-muted); background: none;
+            border: none; cursor: pointer; padding: 2px 6px; font-family: inherit;
+            transition: color 0.15s;
+        }
+        .uuid-remove:hover { color: #EF4444; }
+        .uuid-hint {
+            font-size: 0.6rem; color: var(--text-muted); margin-top: 0.4rem;
+            line-height: 1.4;
+        }
+        .slots-info {
+            font-size: 0.62rem; color: var(--text-muted); margin-top: 0.35rem;
+            text-align: center;
+        }
+
         /* ── Button mapping panel ── */
         #mapPanel {
             width: 100%; max-width: 640px;
@@ -90,6 +172,19 @@
             border-color: var(--primary); color: var(--primary);
             background: var(--primary-dim);
         }
+
+        /* ── Disconnect button inside connected device row ── */
+        .disconnect-btn {
+            font-size: 0.58rem; font-weight: 600; font-family: inherit;
+            padding: 0.2rem 0.6rem; border-radius: var(--radius-sm);
+            border: 1px solid rgba(239,68,68,0.3); background: transparent;
+            color: var(--text-muted); cursor: pointer; transition: all 0.15s;
+            flex-shrink: 0;
+        }
+        .disconnect-btn:hover {
+            color: #EF4444; border-color: rgba(239,68,68,0.6);
+            background: rgba(239,68,68,0.08);
+        }
     </style>
 </head>
 <body class="with-mountains">
@@ -119,16 +214,39 @@
             </button>
         </div>
 
-        <!-- Controller scan -->
+        <!-- Controller scan — two buttons -->
         <div class="scan-area stagger-3">
-            <div class="scan-section-label">🎮 Remote Controller</div>
-            <button class="scan-btn" id="scanCtrlBtn" onclick="window._scanController()">
-                <div class="scan-spinner" id="scanCtrlSpinner"></div>
-                <span id="scanCtrlLabel">Scan for Remote Controller</span>
-            </button>
+            <div class="scan-section-label">🎮 Remote Controllers (up to 2)</div>
+            <div class="scan-btn-row">
+                <button class="scan-btn" id="scanCtrlBtn" onclick="window._scanController('filtered')">
+                    <div class="scan-spinner" id="scanCtrlSpinner"></div>
+                    <span id="scanCtrlLabel">Scan Known Controllers</span>
+                </button>
+                <button class="scan-btn scan-btn-secondary" id="scanCtrlAllBtn" onclick="window._scanController('all')">
+                    <div class="scan-spinner" id="scanCtrlAllSpinner"></div>
+                    <span id="scanCtrlAllLabel">Scan All Devices</span>
+                </button>
+            </div>
+            <div class="slots-info" id="slotsInfo">2 slots available</div>
         </div>
 
-        <!-- Button mapping panel (shown when controller is connected) -->
+        <!-- Custom UUID configuration -->
+        <div class="custom-uuid-section stagger-3">
+            <button class="custom-uuid-toggle" onclick="window._toggleCustomUUID()">⚙ Advanced: Add custom service UUID</button>
+            <div class="custom-uuid-body" id="customUuidBody">
+                <div class="uuid-input-row">
+                    <input type="text" id="customUuidInput" placeholder="e.g. 0000fff0-0000-1000-8000-00805f9b34fb" spellcheck="false">
+                    <button class="uuid-add-btn" onclick="window._addCustomUUID()">Add</button>
+                </div>
+                <ul class="uuid-list" id="customUuidList"></ul>
+                <div class="uuid-hint">
+                    💡 If your controller's buttons aren't detected, find its service UUID using <strong>nRF Connect</strong> app
+                    and add it here. Reconnect the controller after adding.
+                </div>
+            </div>
+        </div>
+
+        <!-- Button mapping panel (shown when at least one controller is connected) -->
         <div id="mapPanel" class="stagger-3">
             <div class="map-header">
                 <div class="map-title">🗺 Configure Controller Buttons</div>
@@ -212,6 +330,11 @@
             startLearnMode,
             cancelLearnMode,
             isLearning,
+            getControllerInfo,
+            disconnectController,
+            loadCustomServiceUUIDs,
+            addCustomServiceUUID,
+            removeCustomServiceUUID,
         } from './js/ble/manager.js';
         import { state } from './js/state.js';
 
@@ -242,30 +365,55 @@
         };
 
         // ── Controller ───────────────────────────────────────────
-        window._scanController = async function() {
-            const btn     = document.getElementById('scanCtrlBtn');
-            const spinner = document.getElementById('scanCtrlSpinner');
-            const label   = document.getElementById('scanCtrlLabel');
+        window._scanController = async function(mode) {
+            const isFiltered = mode === 'filtered';
+            const btn     = document.getElementById(isFiltered ? 'scanCtrlBtn' : 'scanCtrlAllBtn');
+            const spinner = document.getElementById(isFiltered ? 'scanCtrlSpinner' : 'scanCtrlAllSpinner');
+            const label   = document.getElementById(isFiltered ? 'scanCtrlLabel' : 'scanCtrlAllLabel');
 
             btn.classList.add('scanning');
             spinner.style.display = 'block';
+            const origText = label.textContent;
             label.textContent = 'Select your remote…';
 
-            const device = await scanAndConnectController();
+            const result = await scanAndConnectController(mode);
 
             btn.classList.remove('scanning');
             spinner.style.display = 'none';
-            label.textContent = device ? 'Scan for another controller' : 'Scan for Remote Controller';
+            label.textContent = origText;
             updateConnectedUI();
+            updateSlotsInfo();
 
-            if (device) {
+            if (result) {
                 document.getElementById('mapPanel').style.display = 'block';
                 refreshMapUI();
             }
         };
 
+        // ── Disconnect a controller slot ─────────────────────────
+        window._disconnectCtrl = function(slot) {
+            disconnectController(slot);
+            updateConnectedUI();
+            updateSlotsInfo();
+
+            // Hide mapping panel if no controllers connected
+            const c1 = state.get('controller_1_status');
+            const c2 = state.get('controller_2_status');
+            if (c1 !== 'connected' && c2 !== 'connected') {
+                document.getElementById('mapPanel').style.display = 'none';
+            }
+        };
+
         // ── Learn mode ───────────────────────────────────────────
         window._startLearn = function(action) {
+            // Must have at least one controller connected
+            const c1 = state.get('controller_1_status');
+            const c2 = state.get('controller_2_status');
+            if (c1 !== 'connected' && c2 !== 'connected') {
+                alert('Connect at least one controller first.');
+                return;
+            }
+
             // Cancel any previous learn session
             cancelLearnMode();
 
@@ -323,23 +471,46 @@
             });
         }
 
-        // Show mapping panel if controller was already connected before
-        const ctStatus = state.get('controller_status');
-        if (ctStatus === 'connected') {
+        function updateSlotsInfo() {
+            const c1 = state.get('controller_1_status');
+            const c2 = state.get('controller_2_status');
+            let used = 0;
+            if (c1 === 'connected' || c1 === 'connecting') used++;
+            if (c2 === 'connected' || c2 === 'connecting') used++;
+            const free = 2 - used;
+            const el = document.getElementById('slotsInfo');
+            if (free === 0) {
+                el.textContent = 'Both slots occupied — disconnect one to add another';
+                el.style.color = 'var(--accent)';
+            } else {
+                el.textContent = `${free} slot${free > 1 ? 's' : ''} available`;
+                el.style.color = '';
+            }
+        }
+
+        // Show mapping panel if any controller was already connected
+        const c1Status = state.get('controller_1_status');
+        const c2Status = state.get('controller_2_status');
+        if (c1Status === 'connected' || c2Status === 'connected') {
             document.getElementById('mapPanel').style.display = 'block';
             refreshMapUI();
         }
 
         // Load existing map state on page open
         refreshMapUI();
+        updateSlotsInfo();
 
         // ── State listener ───────────────────────────────────────
-        state.addEventListener('change', () => updateConnectedUI());
+        state.addEventListener('change', () => {
+            updateConnectedUI();
+            updateSlotsInfo();
+        });
 
         function updateConnectedUI() {
             const list = document.getElementById('connectedList');
             const rows = [];
 
+            // ── Trainer ──
             const trStatus = state.get('trainer_status');
             const trName   = state.get('trainer_name');
             if (trStatus === 'connected' || trStatus === 'connecting') {
@@ -356,21 +527,44 @@
                     </div>`);
             }
 
-            const ctStatus2 = state.get('controller_status');
-            const ctName    = state.get('controller_name');
-            if (ctStatus2 === 'connected' || ctStatus2 === 'connecting') {
-                const dotClass   = ctStatus2 === 'connected' ? 'connected' : 'connecting';
-                const statusText = ctStatus2 === 'connected' ? 'Connected ✓' : 'Connecting…';
+            // ── Controller 1 ──
+            const c1Status = state.get('controller_1_status');
+            const c1Name   = state.get('controller_1_name');
+            if (c1Status === 'connected' || c1Status === 'connecting') {
+                const dotClass   = c1Status === 'connected' ? 'connected' : 'connecting';
+                const statusText = c1Status === 'connected' ? 'Connected ✓' : 'Connecting…';
                 rows.push(`
                     <div class="card device-row">
                         <div class="device-dot ${dotClass}"></div>
                         <div style="flex:1;min-width:0;">
-                            <div class="device-name">${ctName || 'Remote Controller'}</div>
-                            <div class="device-meta">${statusText}</div>
+                            <div class="device-name">${c1Name || 'Controller 1'}</div>
+                            <div class="device-meta">${statusText} — Slot 1</div>
                         </div>
                         <span class="type-badge controller">controller</span>
+                        <button class="disconnect-btn" onclick="window._disconnectCtrl(0)">✕</button>
                     </div>`);
+            }
 
+            // ── Controller 2 ──
+            const c2Status = state.get('controller_2_status');
+            const c2Name   = state.get('controller_2_name');
+            if (c2Status === 'connected' || c2Status === 'connecting') {
+                const dotClass   = c2Status === 'connected' ? 'connected' : 'connecting';
+                const statusText = c2Status === 'connected' ? 'Connected ✓' : 'Connecting…';
+                rows.push(`
+                    <div class="card device-row">
+                        <div class="device-dot ${dotClass}"></div>
+                        <div style="flex:1;min-width:0;">
+                            <div class="device-name">${c2Name || 'Controller 2'}</div>
+                            <div class="device-meta">${statusText} — Slot 2</div>
+                        </div>
+                        <span class="type-badge controller">controller</span>
+                        <button class="disconnect-btn" onclick="window._disconnectCtrl(1)">✕</button>
+                    </div>`);
+            }
+
+            // Show mapping panel if at least one controller is connected
+            if (c1Status === 'connected' || c2Status === 'connected') {
                 document.getElementById('mapPanel').style.display = 'block';
                 refreshMapUI();
             }
@@ -379,6 +573,49 @@
                 ? rows.join('')
                 : '<div class="empty-connected">No devices connected yet</div>';
         }
+
+        // ── Custom UUID management ───────────────────────────────
+        window._toggleCustomUUID = function() {
+            document.getElementById('customUuidBody').classList.toggle('open');
+            refreshCustomUuidList();
+        };
+
+        window._addCustomUUID = function() {
+            const input = document.getElementById('customUuidInput');
+            const val = input.value.trim();
+            if (!val) return;
+
+            // Basic UUID format validation
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            if (!uuidRegex.test(val)) {
+                alert('Invalid UUID format. Expected: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx');
+                return;
+            }
+
+            addCustomServiceUUID(val);
+            input.value = '';
+            refreshCustomUuidList();
+        };
+
+        window._removeCustomUUID = function(uuid) {
+            removeCustomServiceUUID(uuid);
+            refreshCustomUuidList();
+        };
+
+        function refreshCustomUuidList() {
+            const uuids = loadCustomServiceUUIDs();
+            const list = document.getElementById('customUuidList');
+            if (uuids.length === 0) {
+                list.innerHTML = '';
+                return;
+            }
+            list.innerHTML = uuids.map(u =>
+                `<li><span>${u}</span><button class="uuid-remove" onclick="window._removeCustomUUID('${u}')">✕</button></li>`
+            ).join('');
+        }
+
+        // Init custom UUID list
+        refreshCustomUuidList();
     </script>
 </body>
 </html>

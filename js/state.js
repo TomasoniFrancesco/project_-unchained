@@ -11,7 +11,12 @@ class AppState extends EventTarget {
         trainer_address: '',
         scanning: false,
         scan_results: [],
-        controllers: [],
+
+        // Controllers (2 slots)
+        controller_1_status: 'disconnected',
+        controller_1_name: '',
+        controller_2_status: 'disconnected',
+        controller_2_name: '',
 
         // Ride
         ride_active: false,

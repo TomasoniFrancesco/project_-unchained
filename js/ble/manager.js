@@ -1,14 +1,72 @@
 /**
  * BLE Manager — Web Bluetooth scan, connect, and device management.
- * Handles both FTMS smart trainers and BLE remote controllers (HID).
+ * Handles both FTMS smart trainers and BLE remote controllers.
+ *
+ * Controllers: supports up to 2 simultaneous controllers.
+ * Uses universal service discovery — works with HID and proprietary services.
  */
 
 import { state } from '../state.js';
 import { FTMS_SERVICE, subscribeIndoorBikeData, getControlPoint, requestControl } from './ftms.js';
 
 // ── BLE Service UUIDs ──────────────────────────────────────────────
-const HID_SERVICE = '00001812-0000-1000-8000-00805f9b34fb';
-const HID_REPORT  = '00002a4d-0000-1000-8000-00805f9b34fb';
+// NOTE: HID Service (0x1812) is BLOCKLISTED by Chrome's Web Bluetooth.
+// We cannot filter by it or access it. We rely on universal discovery instead.
+
+// localStorage key for user-defined custom service UUIDs
+const CUSTOM_UUID_KEY = 'fz_custom_service_uuids';
+
+/**
+ * Build full 128-bit UUID from 16-bit short form.
+ */
+function uuid16(short) {
+    return `0000${short}-0000-1000-8000-00805f9b34fb`;
+}
+
+/**
+ * Comprehensive list of non-blocklisted BLE services commonly found
+ * on remote controllers, buttons, and cycling accessories.
+ */
+const KNOWN_CONTROLLER_SERVICES = [
+    // ── Standard GATT services (non-blocklisted) ──
+    uuid16('1800'),   // Generic Access
+    uuid16('1801'),   // Generic Attribute
+    uuid16('180a'),   // Device Information
+    uuid16('180f'),   // Battery Service
+    uuid16('1816'),   // Cycling Speed and Cadence
+    uuid16('1818'),   // Cycling Power
+    uuid16('1826'),   // Fitness Machine (FTMS)
+
+    // ── Common proprietary services (0xFFxx range) ──
+    uuid16('ff00'), uuid16('ff01'), uuid16('ff02'), uuid16('ff03'),
+    uuid16('ff04'), uuid16('ff05'), uuid16('ff06'), uuid16('ff07'),
+    uuid16('ff08'), uuid16('ff09'), uuid16('ff0a'), uuid16('ff0b'),
+    uuid16('ff0c'), uuid16('ff0d'), uuid16('ff0e'), uuid16('ff0f'),
+    uuid16('ff10'), uuid16('ff20'), uuid16('ff30'), uuid16('ff40'),
+    uuid16('ff50'), uuid16('ff60'), uuid16('ff70'), uuid16('ff80'),
+    uuid16('ff90'), uuid16('ffa0'), uuid16('ffb0'), uuid16('ffc0'),
+    uuid16('ffd0'), uuid16('ffe0'), uuid16('fff0'),
+    uuid16('fff1'), uuid16('fff2'), uuid16('fff3'), uuid16('fff4'),
+    uuid16('fff5'), uuid16('fff6'), uuid16('fff7'), uuid16('fff8'),
+    uuid16('fff9'), uuid16('fffa'), uuid16('fffb'), uuid16('fffc'),
+    uuid16('fffd'), uuid16('fffe'),
+
+    // ── Common proprietary services (0xFExx range — Bluetooth SIG members) ──
+    uuid16('fee0'), uuid16('fee1'), uuid16('fee2'), uuid16('fee3'),
+    uuid16('fee4'), uuid16('fee5'), uuid16('fee6'), uuid16('fee7'),
+    uuid16('fee8'), uuid16('fee9'), uuid16('feea'), uuid16('feeb'),
+    uuid16('feec'), uuid16('feed'), uuid16('feee'), uuid16('feef'),
+    uuid16('fef0'), uuid16('fef1'), uuid16('fef2'), uuid16('fef3'),
+    uuid16('fef4'), uuid16('fef5'),
+
+    // ── Common proprietary (cycling remotes like Tacx, Wahoo, Elite) ──
+    uuid16('fd00'), uuid16('fd01'), uuid16('fd02'),
+    uuid16('fc00'), uuid16('fc01'), uuid16('fc02'),
+    uuid16('fb00'), uuid16('fb01'), uuid16('fb02'),
+    uuid16('fa00'), uuid16('fa01'), uuid16('fa02'),
+    uuid16('6e40'),  // Nordic UART Service (short form)
+    '6e400001-b5a3-f393-e0a9-e50e24dcca9e',  // Nordic UART Service (full)
+];
 
 // ── Controller button map storage key ─────────────────────────────
 const MAP_KEY = 'fz_controller_map';
@@ -20,9 +78,11 @@ let trainerControlPoint = null;
 let bikeDataChar        = null;
 let onTrainerData       = null;
 
-// ── Controller state ───────────────────────────────────────────────
-let controllerDevice = null;
-let controllerServer = null;
+// ── Controllers state (2 slots) ───────────────────────────────────
+const controllers = [
+    { device: null, server: null, name: '', status: 'disconnected' },  // slot 0 → controller_1
+    { device: null, server: null, name: '', status: 'disconnected' },  // slot 1 → controller_2
+];
 
 // ── Learn mode ────────────────────────────────────────────────────
 let learnModeAction   = null;   // 'gearUp' | 'gearDown' | 'pause' | null
@@ -75,7 +135,7 @@ export function clearControllerMap() {
 }
 
 /**
- * Start learn mode: the next button press on the controller will be
+ * Start learn mode: the next button press on any controller will be
  * captured and saved as the mapping for `action`.
  *
  * @param {string}   action   - 'gearUp' | 'gearDown' | 'pause'
@@ -182,82 +242,199 @@ export function disconnectTrainer() {
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  CONTROLLER (BLE HID remote)
+//  CONTROLLER (BLE remote — up to 2 simultaneous)
 // ══════════════════════════════════════════════════════════════════
 
 /**
- * Scan and connect to a BLE remote controller.
- * Subscribes to HID Report notifications and dispatches button events.
+ * Find the next free controller slot (0 or 1). Returns -1 if both occupied.
  */
-export async function scanAndConnectController() {
-    state.set('controller_scanning', true);
+function findFreeSlot() {
+    for (let i = 0; i < controllers.length; i++) {
+        if (!controllers[i].server || !controllers[i].server.connected) return i;
+    }
+    return -1;
+}
+
+/**
+ * Sync a controller slot's state to the reactive AppState.
+ */
+function syncControllerState(slot) {
+    const c = controllers[slot];
+    const n = slot + 1; // 1-indexed for UI
+    state.update({
+        [`controller_${n}_status`]: c.status,
+        [`controller_${n}_name`]:   c.name,
+    });
+}
+
+/**
+ * Load user-defined custom service UUIDs from localStorage.
+ */
+export function loadCustomServiceUUIDs() {
+    try {
+        return JSON.parse(localStorage.getItem(CUSTOM_UUID_KEY)) || [];
+    } catch {
+        return [];
+    }
+}
+
+/**
+ * Save a custom service UUID to localStorage.
+ */
+export function addCustomServiceUUID(uuid) {
+    const uuids = loadCustomServiceUUIDs();
+    const normalized = uuid.toLowerCase().trim();
+    if (!uuids.includes(normalized)) {
+        uuids.push(normalized);
+        localStorage.setItem(CUSTOM_UUID_KEY, JSON.stringify(uuids));
+        console.log(`[BLE] Added custom service UUID: ${normalized}`);
+    }
+    return uuids;
+}
+
+/**
+ * Remove a custom service UUID from localStorage.
+ */
+export function removeCustomServiceUUID(uuid) {
+    let uuids = loadCustomServiceUUIDs();
+    uuids = uuids.filter(u => u !== uuid.toLowerCase().trim());
+    localStorage.setItem(CUSTOM_UUID_KEY, JSON.stringify(uuids));
+    return uuids;
+}
+
+/**
+ * Build the full optionalServices list including user custom UUIDs.
+ */
+function buildOptionalServices() {
+    const custom = loadCustomServiceUUIDs();
+    return [...KNOWN_CONTROLLER_SERVICES, ...custom];
+}
+
+/**
+ * Scan and connect to a BLE remote controller.
+ *
+ * Both modes use acceptAllDevices — Chrome blocklists HID so we can't filter by it.
+ * 'filtered' mode uses name-prefix filters for known controller names.
+ * 'all' mode shows all BLE devices.
+ *
+ * @param {'filtered'|'all'} mode
+ * @returns {object|null} The connected device or null.
+ */
+export async function scanAndConnectController(mode = 'all') {
+    const slot = findFreeSlot();
+    if (slot === -1) {
+        console.warn('[BLE] Both controller slots are occupied. Disconnect one first.');
+        return null;
+    }
+
+    const n = slot + 1;
+    state.set(`controller_${n}_status`, 'scanning');
 
     try {
-        const device = await navigator.bluetooth.requestDevice({
-            acceptAllDevices: true,
-            optionalServices: [HID_SERVICE, FTMS_SERVICE],
-        });
+        const optionalServices = buildOptionalServices();
 
-        controllerDevice = device;
-        state.update({
-            controller_scanning: false,
-            controller_name:     device.name || 'Remote Controller',
-            controller_status:   'connecting',
-        });
+        let requestOptions;
+        if (mode === 'filtered') {
+            // Filter by common controller name prefixes
+            requestOptions = {
+                filters: [
+                    { namePrefix: 'Remote' },
+                    { namePrefix: 'Controller' },
+                    { namePrefix: 'Tacx' },
+                    { namePrefix: 'Wahoo' },
+                    { namePrefix: 'Elite' },
+                    { namePrefix: 'KICKR' },
+                    { namePrefix: 'Shutter' },
+                    { namePrefix: 'AB Shutter' },
+                    { namePrefix: 'iTAG' },
+                    { namePrefix: 'Bluetooth' },
+                    { namePrefix: 'BT' },
+                    { namePrefix: 'Gamepad' },
+                    { namePrefix: 'Media' },
+                ],
+                optionalServices,
+            };
+        } else {
+            requestOptions = {
+                acceptAllDevices: true,
+                optionalServices,
+            };
+        }
 
-        console.log(`[BLE] Controller selected: ${device.name}`);
+        const device = await navigator.bluetooth.requestDevice(requestOptions);
+
+        const ctrl = controllers[slot];
+        ctrl.device = device;
+        ctrl.name   = device.name || `Controller ${n}`;
+        ctrl.status = 'connecting';
+        syncControllerState(slot);
+
+        console.log(`[BLE] Controller ${n} selected: ${device.name}`);
 
         device.addEventListener('gattserverdisconnected', () => {
-            console.log('[BLE] Controller disconnected');
-            controllerServer = null;
-            learnModeAction  = null;
-            learnModeCallback = null;
-            state.update({ controller_status: 'disconnected', controller_name: '' });
+            console.log(`[BLE] Controller ${n} disconnected`);
+            ctrl.server = null;
+            ctrl.status = 'disconnected';
+            ctrl.name   = '';
+            syncControllerState(slot);
         });
 
-        controllerServer = await device.gatt.connect();
-        console.log('[BLE] Controller GATT connected');
+        ctrl.server = await device.gatt.connect();
+        console.log(`[BLE] Controller ${n} GATT connected`);
 
+        // ── Universal service discovery ─────────────────────────
+        // Enumerate ALL accessible services and subscribe to every
+        // characteristic that supports notifications.
         let subscribed = false;
-        try {
-            const hidService = await controllerServer.getPrimaryService(HID_SERVICE);
-            const reports    = await hidService.getCharacteristics(HID_REPORT);
 
-            for (const report of reports) {
+        try {
+            const services = await ctrl.server.getPrimaryServices();
+            console.log(`[BLE] Controller ${n}: found ${services.length} service(s)`);
+
+            for (const service of services) {
                 try {
-                    await report.startNotifications();
-                    report.addEventListener('characteristicvaluechanged', (e) => {
-                        handleControllerReport(e.target.value);
-                    });
-                    subscribed = true;
-                    console.log('[BLE] Subscribed to HID report characteristic');
-                } catch (_) { /* not all chars support notifications */ }
+                    const chars = await service.getCharacteristics();
+                    for (const char of chars) {
+                        if (char.properties.notify || char.properties.indicate) {
+                            try {
+                                await char.startNotifications();
+                                char.addEventListener('characteristicvaluechanged', (e) => {
+                                    handleControllerReport(e.target.value);
+                                });
+                                subscribed = true;
+                                console.log(`[BLE] Controller ${n}: subscribed to ${service.uuid} / ${char.uuid}`);
+                            } catch (_) { /* skip */ }
+                        }
+                    }
+                } catch (_) { /* skip inaccessible service */ }
             }
         } catch (err) {
-            console.warn('[BLE] HID service not available:', err.message);
+            console.warn(`[BLE] Controller ${n}: service discovery failed:`, err.message);
         }
 
         if (!subscribed) {
-            console.warn('[BLE] No HID notifications — controller connected but buttons may not work');
+            console.warn(`[BLE] Controller ${n}: no notifiable characteristics found — buttons won't work.`);
+            console.warn('[BLE] Try adding your controller\'s service UUID in the custom UUID field.');
         }
 
-        state.set('controller_status', 'connected');
-        return device;
+        ctrl.status = 'connected';
+        syncControllerState(slot);
+        console.log(`[BLE] Controller ${n} fully connected (slot ${slot}), subscribed: ${subscribed}`);
+        return { device, slot };
 
     } catch (err) {
-        state.set('controller_scanning', false);
+        state.set(`controller_${slot + 1}_status`, 'disconnected');
         if (err.name === 'NotFoundError') {
             console.log('[BLE] Controller selection cancelled');
         } else {
             console.error('[BLE] Controller connection failed:', err);
-            state.set('controller_status', 'disconnected');
         }
         return null;
     }
 }
 
 /**
- * Parse a raw HID report DataView.
+ * Parse a raw report DataView from any controller.
  *
  * In LEARN MODE: capture the signature and save it, then call the learn callback.
  * In NORMAL MODE: compare against saved mappings and fire the matching action.
@@ -303,14 +480,41 @@ function fire(action) {
     }
 }
 
+/**
+ * Check if at least one controller is connected.
+ */
 export function isControllerConnected() {
-    return controllerServer !== null && controllerServer.connected;
+    return controllers.some(c => c.server !== null && c.server.connected);
 }
 
-export function disconnectController() {
-    if (controllerServer && controllerServer.connected) controllerServer.disconnect();
-    controllerServer = null;
-    controllerDevice = null;
+/**
+ * Get controller info for a given slot (0 or 1).
+ */
+export function getControllerInfo(slot) {
+    const c = controllers[slot];
+    return {
+        name:      c.name,
+        status:    c.status,
+        connected: c.server !== null && c.server.connected,
+    };
+}
+
+/**
+ * Disconnect a specific controller by slot (0 or 1).
+ */
+export function disconnectController(slot) {
+    if (slot === undefined) {
+        // Disconnect all
+        controllers.forEach((_, i) => disconnectController(i));
+        return;
+    }
+    const c = controllers[slot];
+    if (c.server && c.server.connected) c.server.disconnect();
+    c.server = null;
+    c.device = null;
+    c.name   = '';
+    c.status = 'disconnected';
+    syncControllerState(slot);
 }
 
 // ══════════════════════════════════════════════════════════════════
