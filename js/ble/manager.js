@@ -614,12 +614,47 @@ function decodeZwiftButtons(bytes) {
     };
 }
 
+function extractAsciiPayload(bytes) {
+    let best = '';
+
+    for (let start = 0; start < bytes.length; start++) {
+        let current = '';
+
+        for (let i = start; i < bytes.length; i++) {
+            const byte = bytes[i];
+            if (byte === 0) break;
+            if (byte >= 32 && byte <= 126) {
+                current += String.fromCharCode(byte);
+                continue;
+            }
+            current = '';
+            break;
+        }
+
+        if (current.length > best.length) best = current;
+    }
+
+    return best;
+}
+
+function isTelemetryReport(bytes) {
+    if (bytes.length === 3 && bytes[0] === 0x19 && bytes[1] === 0x10 && bytes[2] >= 0 && bytes[2] <= 100) {
+        return true;
+    }
+
+    const asciiPayload = extractAsciiPayload(bytes);
+    if (!asciiPayload) return false;
+
+    return /batt|volt|mv|battery|temp|firmware|version/i.test(asciiPayload);
+}
+
 function classifyControllerReport(bytes) {
     if (!bytes.length) return { skip: true };
     if (bytes.every(byte => byte === 0)) return { skip: true };
 
     const ascii = String.fromCharCode(...bytes);
     if (ascii === 'RideOn') return { skip: true };
+    if (isTelemetryReport(bytes)) return { skip: true };
 
     const zwift = decodeZwiftButtons(bytes);
     if (zwift) return zwift;
