@@ -16,6 +16,34 @@ import { FTMS_SERVICE, subscribeIndoorBikeData, getControlPoint, requestControl 
 // localStorage keys
 const CUSTOM_UUID_KEY = 'fz_custom_service_uuids';
 const MAP_KEY         = 'fz_controller_map';
+const textEncoder     = new TextEncoder();
+
+const CLICK_SERVICE_UUID   = uuid16('fc82');
+const PLAY_SERVICE_UUID    = '00000001-19ca-4651-86e5-fa29dcdd09d1';
+const PLAY_NOTIFY_UUID     = '00000002-19ca-4651-86e5-fa29dcdd09d1';
+const PLAY_WRITE_UUID      = '00000003-19ca-4651-86e5-fa29dcdd09d1';
+const PLAY_ALT_NOTIFY_UUID = '00000004-19ca-4651-86e5-fa29dcdd09d1';
+
+const GENERIC_ACCESS_SERVICE   = uuid16('1800');
+const GENERIC_ATTRIBUTE_SERVICE = uuid16('1801');
+const DEVICE_INFO_SERVICE      = uuid16('180a');
+const BATTERY_SERVICE          = uuid16('180f');
+const BATTERY_LEVEL_CHAR       = uuid16('2a19');
+const DEVICE_NAME_CHAR         = uuid16('2a00');
+const APPEARANCE_CHAR          = uuid16('2a01');
+
+const IGNORED_CONTROLLER_SERVICES = new Set([
+    GENERIC_ACCESS_SERVICE,
+    GENERIC_ATTRIBUTE_SERVICE,
+    DEVICE_INFO_SERVICE,
+    BATTERY_SERVICE,
+]);
+
+const IGNORED_CONTROLLER_CHARACTERISTICS = new Set([
+    BATTERY_LEVEL_CHAR,
+    DEVICE_NAME_CHAR,
+    APPEARANCE_CHAR,
+]);
 
 /**
  * Build full 128-bit UUID from 16-bit short form.
@@ -28,6 +56,8 @@ function uuid16(short) {
  * Comprehensive list of non-blocklisted BLE services.
  */
 const KNOWN_CONTROLLER_SERVICES = [
+    CLICK_SERVICE_UUID,
+    PLAY_SERVICE_UUID,
     uuid16('1800'), uuid16('1801'), uuid16('180a'), uuid16('180f'),
     uuid16('1816'), uuid16('1818'), uuid16('1826'),
     uuid16('ff00'), uuid16('ff01'), uuid16('ff02'), uuid16('ff03'),
@@ -65,13 +95,14 @@ let onTrainerData       = null;
 
 // ── Controllers state (2 slots) ───────────────────────────────────
 const controllers = [
-    { device: null, server: null, name: '', status: 'disconnected' },
-    { device: null, server: null, name: '', status: 'disconnected' },
+    { device: null, server: null, name: '', status: 'disconnected', subscriptions: [], writableChannels: [] },
+    { device: null, server: null, name: '', status: 'disconnected', subscriptions: [], writableChannels: [] },
 ];
 
 // ── Learn mode ────────────────────────────────────────────────────
 let learnModeAction   = null;
 let learnModeCallback = null;
+let learnModeStartedAt = 0;
 
 // ── Controller action callbacks (set by ride.html) ─────────────────
 const controllerCallbacks = {
@@ -104,11 +135,44 @@ export function loadControllerMap() {
     }
 }
 
-export function saveButtonMapping(action, bytes) {
+function normalizeUuid(uuid) {
+    return String(uuid || '').toLowerCase();
+}
+
+function shortUuid(uuid) {
+    return normalizeUuid(uuid).slice(0, 8) || 'unknown';
+}
+
+function mappingsEqual(a, b) {
+    if (!arraysEqual(a?.bytes || [], b?.bytes || [])) return false;
+
+    const aHasSource = !!(a?.serviceUuid || a?.charUuid);
+    const bHasSource = !!(b?.serviceUuid || b?.charUuid);
+    if (!aHasSource || !bHasSource) return true;
+
+    return normalizeUuid(a?.serviceUuid) === normalizeUuid(b?.serviceUuid)
+        && normalizeUuid(a?.charUuid) === normalizeUuid(b?.charUuid);
+}
+
+export function saveButtonMapping(action, bytes, source = null) {
     const map = loadControllerMap();
-    map[action] = { bytes };
+    const nextMapping = {
+        bytes: Array.from(bytes),
+        ...(source?.serviceUuid ? { serviceUuid: normalizeUuid(source.serviceUuid) } : {}),
+        ...(source?.charUuid ? { charUuid: normalizeUuid(source.charUuid) } : {}),
+    };
+
+    for (const [otherAction, existing] of Object.entries(map)) {
+        if (otherAction !== action && mappingsEqual(existing, nextMapping)) {
+            console.warn(`[BLE] Refusing duplicate mapping: ${action} matches ${otherAction}`);
+            return { ok: false, conflictAction: otherAction, mapping: nextMapping };
+        }
+    }
+
+    map[action] = nextMapping;
     localStorage.setItem(MAP_KEY, JSON.stringify(map));
-    console.log(`[BLE] Saved mapping: ${action} → [${bytes.join(', ')}]`);
+    console.log(`[BLE] Saved mapping: ${action} → [${bytes.join(', ')}] (${shortUuid(nextMapping.serviceUuid)} / ${shortUuid(nextMapping.charUuid)})`);
+    return { ok: true, mapping: nextMapping };
 }
 
 export function clearControllerMap() {
@@ -119,12 +183,14 @@ export function clearControllerMap() {
 export function startLearnMode(action, callback) {
     learnModeAction   = action;
     learnModeCallback = callback;
+    learnModeStartedAt = Date.now();
     console.log(`[BLE] Learn mode started for: ${action}`);
 }
 
 export function cancelLearnMode() {
     learnModeAction   = null;
     learnModeCallback = null;
+    learnModeStartedAt = 0;
 }
 
 export function isLearning() {
@@ -163,7 +229,7 @@ export function removeCustomServiceUUID(uuid) {
 
 function buildOptionalServices() {
     const custom = loadCustomServiceUUIDs();
-    return [...KNOWN_CONTROLLER_SERVICES, ...custom];
+    return [...new Set([...KNOWN_CONTROLLER_SERVICES, ...custom])];
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -269,34 +335,156 @@ function syncControllerState(slot) {
 }
 
 /**
- * Subscribe to all notifiable characteristics on a connected GATT server.
+ * Subscribe to the most likely controller notify characteristics.
  */
-async function subscribeAllNotifiable(server, label) {
+function clearControllerRuntime(slot) {
+    const ctrl = controllers[slot];
+
+    for (const sub of ctrl.subscriptions) {
+        try {
+            sub.characteristic.removeEventListener('characteristicvaluechanged', sub.listener);
+        } catch (_) { /* noop */ }
+    }
+
+    ctrl.subscriptions = [];
+    ctrl.writableChannels = [];
+
+    for (const key of Array.from(reportStates.keys())) {
+        if (key.startsWith(`${slot}|`)) reportStates.delete(key);
+    }
+}
+
+function isLikelyZwiftService(serviceUuid) {
+    const uuid = normalizeUuid(serviceUuid);
+    return uuid === CLICK_SERVICE_UUID || uuid === PLAY_SERVICE_UUID
+        || uuid.includes('fc82')
+        || uuid.replace(/-/g, '').includes('19ca4651');
+}
+
+function scoreControllerChannel(serviceUuid, charUuid) {
+    const svc = normalizeUuid(serviceUuid);
+    const chr = normalizeUuid(charUuid);
+
+    if (IGNORED_CONTROLLER_SERVICES.has(svc) || IGNORED_CONTROLLER_CHARACTERISTICS.has(chr)) {
+        return -100;
+    }
+    if (chr === PLAY_NOTIFY_UUID) return 100;
+    if (chr === PLAY_ALT_NOTIFY_UUID) return 95;
+    if (chr === PLAY_WRITE_UUID) return 90;
+    if (isLikelyZwiftService(svc)) return 80;
+    return 10;
+}
+
+function selectPreferredChannels(channels) {
+    if (!channels.length) return [];
+
+    const viable = channels.filter(channel => channel.score >= 0);
+    if (!viable.length) return [];
+
+    const maxScore = Math.max(...viable.map(channel => channel.score));
+    const threshold = maxScore >= 80 ? maxScore - 10 : maxScore;
+    return viable.filter(channel => channel.score >= threshold);
+}
+
+async function writeRideOn(channel, label) {
+    const char = channel.characteristic;
+    const payload = textEncoder.encode('RideOn');
+
+    try {
+        if (char.properties.writeWithoutResponse && char.writeValueWithoutResponse) {
+            await char.writeValueWithoutResponse(payload);
+            console.log(`[BLE] ${label}: RideOn sent to ${shortUuid(channel.charUuid)}`);
+            return true;
+        }
+        if (char.properties.write && char.writeValueWithResponse) {
+            await char.writeValueWithResponse(payload);
+            console.log(`[BLE] ${label}: RideOn sent to ${shortUuid(channel.charUuid)}`);
+            return true;
+        }
+        if (char.properties.write && char.writeValue) {
+            await char.writeValue(payload);
+            console.log(`[BLE] ${label}: RideOn sent to ${shortUuid(channel.charUuid)}`);
+            return true;
+        }
+    } catch (err) {
+        console.warn(`[BLE] ${label}: RideOn failed for ${shortUuid(channel.charUuid)}:`, err.message);
+    }
+
+    return false;
+}
+
+async function subscribeControllerChannels(slot, server, label) {
     let subscribed = false;
+    const ctrl = controllers[slot];
+    clearControllerRuntime(slot);
+
     try {
         const services = await server.getPrimaryServices();
         console.log(`[BLE] ${label}: found ${services.length} service(s)`);
 
+        const notifyChannels = [];
+        const writableChannels = [];
+
         for (const service of services) {
             try {
+                const serviceUuid = normalizeUuid(service.uuid);
                 const chars = await service.getCharacteristics();
+
                 for (const char of chars) {
+                    const charUuid = normalizeUuid(char.uuid);
+                    const channel = {
+                        serviceUuid,
+                        charUuid,
+                        score: scoreControllerChannel(serviceUuid, charUuid),
+                        characteristic: char,
+                    };
+
                     if (char.properties.notify || char.properties.indicate) {
-                        try {
-                            await char.startNotifications();
-                            char.addEventListener('characteristicvaluechanged', (e) => {
-                                handleControllerReport(e.target.value);
-                            });
-                            subscribed = true;
-                            console.log(`[BLE] ${label}: subscribed ${service.uuid} / ${char.uuid}`);
-                        } catch (_) { /* skip */ }
+                        notifyChannels.push(channel);
+                    }
+                    if (char.properties.write || char.properties.writeWithoutResponse) {
+                        writableChannels.push(channel);
                     }
                 }
-            } catch (_) { /* skip */ }
+            } catch (_) { /* skip inaccessible service */ }
+        }
+
+        const selectedNotify = selectPreferredChannels(notifyChannels);
+        const selectedWritable = selectPreferredChannels(writableChannels);
+        ctrl.writableChannels = selectedWritable;
+
+        console.log(`[BLE] ${label}: notify candidates=${notifyChannels.length}, selected=${selectedNotify.length}`);
+
+        for (const channel of selectedNotify) {
+            try {
+                await channel.characteristic.startNotifications();
+                const listener = (event) => {
+                    handleControllerReport({
+                        slot,
+                        label,
+                        serviceUuid: channel.serviceUuid,
+                        charUuid: channel.charUuid,
+                        dataView: event.target.value,
+                    });
+                };
+
+                channel.listener = listener;
+                channel.characteristic.addEventListener('characteristicvaluechanged', listener);
+                ctrl.subscriptions.push(channel);
+                subscribed = true;
+                console.log(`[BLE] ${label}: subscribed ${channel.serviceUuid} / ${channel.charUuid}`);
+            } catch (err) {
+                console.warn(`[BLE] ${label}: subscribe failed for ${channel.charUuid}:`, err.message);
+            }
+        }
+
+        for (const channel of selectedWritable) {
+            await writeRideOn(channel, label);
         }
     } catch (err) {
         console.warn(`[BLE] ${label}: discovery failed:`, err.message);
     }
+
     return subscribed;
 }
 
@@ -358,6 +546,7 @@ export async function scanAndConnectController(mode = 'all') {
 
         device.addEventListener('gattserverdisconnected', () => {
             console.log(`[BLE] Controller ${n} disconnected`);
+            clearControllerRuntime(slot);
             ctrl.server = null;
             ctrl.status = 'disconnected';
             ctrl.name   = '';
@@ -367,7 +556,7 @@ export async function scanAndConnectController(mode = 'all') {
         ctrl.server = await device.gatt.connect();
         console.log(`[BLE] Controller ${n} GATT connected`);
 
-        const subscribed = await subscribeAllNotifiable(ctrl.server, `Controller ${n}`);
+        const subscribed = await subscribeControllerChannels(slot, ctrl.server, `Controller ${n}`);
 
         if (!subscribed) {
             console.warn(`[BLE] Controller ${n}: no notifiable characteristics — buttons won't work.`);
@@ -393,50 +582,125 @@ export async function scanAndConnectController(mode = 'all') {
 //  CONTROLLER REPORT HANDLER
 // ══════════════════════════════════════════════════════════════════
 
-let lastReportSig = '';        // dedup: ignore identical consecutive reports
-const actionCooldowns = {};    // debounce: { action: lastFireTime }
-const COOLDOWN_MS = 400;       // minimum ms between same action fires
+const reportStates = new Map(); // keyed by slot/service/char for edge detection
+const actionCooldowns = {};     // debounce: { action: lastFireTime }
+const COOLDOWN_MS = 400;        // minimum ms between same action fires
 
-function handleControllerReport(dataView) {
+function decodeZwiftButtons(bytes) {
+    if (bytes.length < 7 || bytes[0] !== 0x23) return null;
+
+    const bitmap = (
+        bytes[2]
+        | (bytes[3] << 8)
+        | (bytes[4] << 16)
+        | (bytes[5] << 24)
+    ) >>> 0;
+
+    const pressed = (~bitmap) >>> 0;
+    const actions = [];
+    if (pressed & ((1 << 13) | (1 << 4) | (1 << 6))) actions.push('gearUp');
+    if (pressed & ((1 << 9) | (1 << 5) | (1 << 8))) actions.push('gearDown');
+
+    return {
+        kind: 'zwift',
+        stateSig: `zwift:${bitmap}`,
+        active: pressed !== 0,
+        actions,
+    };
+}
+
+function classifyControllerReport(bytes) {
+    if (!bytes.length) return { skip: true };
+    if (bytes.every(byte => byte === 0)) return { skip: true };
+
+    const ascii = String.fromCharCode(...bytes);
+    if (ascii === 'RideOn') return { skip: true };
+
+    const zwift = decodeZwiftButtons(bytes);
+    if (zwift) return zwift;
+
+    return {
+        kind: 'raw',
+        stateSig: `raw:${bytes.join(',')}`,
+        active: true,
+        actions: [],
+    };
+}
+
+function mappingMatches(mapping, report) {
+    if (!mapping) return false;
+
+    if (mapping.bytes && !arraysEqual(mapping.bytes, report.bytes)) {
+        return false;
+    }
+    if (mapping.serviceUuid && normalizeUuid(mapping.serviceUuid) !== report.serviceUuid) {
+        return false;
+    }
+    if (mapping.charUuid && normalizeUuid(mapping.charUuid) !== report.charUuid) {
+        return false;
+    }
+
+    if (mapping.b0 !== undefined) {
+        return mapping.b0 === report.bytes[0] && mapping.b1 === (report.bytes[1] || 0);
+    }
+
+    return !!mapping.bytes;
+}
+
+function handleControllerReport(report) {
+    const { slot, label, serviceUuid, charUuid, dataView } = report;
     if (dataView.byteLength === 0) return;
 
     const bytes = dataViewToBytes(dataView);
-    if (bytes.every(b => b === 0)) return;
+    const parsed = classifyControllerReport(bytes);
+    if (parsed.skip) return;
 
-    // ── Dedup: ignore identical consecutive reports ──
-    const sig = bytes.join(',');
-    if (sig === lastReportSig) return;   // same data as last time → skip
-    lastReportSig = sig;
+    const sourceKey = `${slot}|${serviceUuid}|${charUuid}`;
+    const previous = reportStates.get(sourceKey) || { stateSig: null, changedAt: 0 };
+    if (previous.stateSig === parsed.stateSig) return;
 
-    // Auto-clear lastReportSig after 200ms so the same button can be pressed again
-    setTimeout(() => { if (lastReportSig === sig) lastReportSig = ''; }, 200);
+    previous.stateSig = parsed.stateSig;
+    previous.changedAt = Date.now();
+    reportStates.set(sourceKey, previous);
 
-    console.log(`[BLE] Report: [${bytes.join(', ')}]`);
+    console.log(`[BLE] ${label} report ${shortUuid(serviceUuid)} / ${shortUuid(charUuid)}: [${bytes.join(', ')}]`);
 
-    // ── LEARN MODE ──
+    if (!parsed.active) return;
+
     if (learnModeAction !== null) {
-        saveButtonMapping(learnModeAction, bytes);
+        if (previous.changedAt < learnModeStartedAt) return;
+
+        const result = saveButtonMapping(learnModeAction, bytes, { serviceUuid, charUuid });
         const cb = learnModeCallback;
-        learnModeAction   = null;
+        learnModeAction = null;
         learnModeCallback = null;
-        if (cb) cb(bytes);
+        learnModeStartedAt = 0;
+        if (cb) cb({ ...result, bytes, serviceUuid, charUuid });
         return;
     }
 
-    // ── NORMAL MODE — match saved mappings ──
     const map = loadControllerMap();
+    const matchedActions = [];
     for (const [action, sigMap] of Object.entries(map)) {
-        if (sigMap && sigMap.bytes && arraysEqual(sigMap.bytes, bytes)) {
-            fire(action);
-            return;
+        if (mappingMatches(sigMap, { bytes, serviceUuid, charUuid })) {
+            matchedActions.push(action);
         }
-        // Legacy support (old b0/b1 format)
-        if (sigMap && sigMap.b0 !== undefined) {
-            if (sigMap.b0 === bytes[0] && sigMap.b1 === (bytes[1] || 0)) {
-                fire(action);
-                return;
-            }
-        }
+    }
+
+    if (matchedActions.length > 1) {
+        console.warn(`[BLE] Ambiguous mapping for [${bytes.join(', ')}]: ${matchedActions.join(', ')}`);
+        return;
+    }
+
+    if (matchedActions.length === 1) {
+        fire(matchedActions[0]);
+        return;
+    }
+
+    if (parsed.kind === 'zwift' && parsed.actions.length) {
+        fire(parsed.actions[0]);
+        console.log(`[BLE] Auto-decoded ${parsed.actions[0]} from Zwift packet`);
+        return;
     }
 
     console.log('[BLE] No mapping for this button.');
@@ -489,6 +753,7 @@ export function disconnectController(slot) {
         return;
     }
     const c = controllers[slot];
+    clearControllerRuntime(slot);
     if (c.server && c.server.connected) c.server.disconnect();
     c.server = null;
     c.device = null;
