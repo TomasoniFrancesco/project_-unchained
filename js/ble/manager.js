@@ -103,6 +103,9 @@ const controllers = [
 let learnModeAction   = null;
 let learnModeCallback = null;
 let learnModeStartedAt = 0;
+let learnModeBaselines = new Map();
+
+const LEARN_BASELINE_WINDOW_MS = 350;
 
 // ── Controller action callbacks (set by ride.html) ─────────────────
 const controllerCallbacks = {
@@ -184,6 +187,7 @@ export function startLearnMode(action, callback) {
     learnModeAction   = action;
     learnModeCallback = callback;
     learnModeStartedAt = Date.now();
+    learnModeBaselines = new Map();
     console.log(`[BLE] Learn mode started for: ${action}`);
 }
 
@@ -191,6 +195,7 @@ export function cancelLearnMode() {
     learnModeAction   = null;
     learnModeCallback = null;
     learnModeStartedAt = 0;
+    learnModeBaselines = new Map();
 }
 
 export function isLearning() {
@@ -670,11 +675,31 @@ function handleControllerReport(report) {
     if (learnModeAction !== null) {
         if (previous.changedAt < learnModeStartedAt) return;
 
+        const baseline = learnModeBaselines.get(sourceKey);
+        const learnAge = Date.now() - learnModeStartedAt;
+
+        if (!baseline) {
+            if (parsed.kind === 'zwift' && parsed.actions.length) {
+                console.log(`[BLE] Learn mode: direct button event detected on ${shortUuid(charUuid)}`);
+            } else if (learnAge < LEARN_BASELINE_WINDOW_MS) {
+                learnModeBaselines.set(sourceKey, parsed.stateSig);
+                console.log(`[BLE] Learn mode: baseline captured on ${shortUuid(charUuid)} (${parsed.stateSig})`);
+                return;
+            } else {
+                console.log(`[BLE] Learn mode: no baseline seen, accepting event fallback on ${shortUuid(charUuid)}`);
+            }
+        } else if (baseline === parsed.stateSig) {
+            return;
+        } else {
+            console.log(`[BLE] Learn mode: state change detected on ${shortUuid(charUuid)} (${baseline} -> ${parsed.stateSig})`);
+        }
+
         const result = saveButtonMapping(learnModeAction, bytes, { serviceUuid, charUuid });
         const cb = learnModeCallback;
         learnModeAction = null;
         learnModeCallback = null;
         learnModeStartedAt = 0;
+        learnModeBaselines = new Map();
         if (cb) cb({ ...result, bytes, serviceUuid, charUuid });
         return;
     }
