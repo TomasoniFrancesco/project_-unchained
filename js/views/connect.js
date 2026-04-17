@@ -188,8 +188,11 @@ export function mount(container) {
             const btn = $(`#mapBtn-${action}`); btn.textContent = 'Press button…'; btn.classList.add('learning-btn');
             $(`#mapStatus-${action}`).textContent = '⌛ Waiting for button press…';
             $(`#mapStatus-${action}`).className = 'map-action-status wait';
-            startLearnMode(action, (bytes) => {
+            startLearnMode(action, (result) => {
                 $(`#mapRow-${action}`).classList.remove('learning'); btn.textContent = 'Set'; btn.classList.remove('learning-btn');
+                if (result && !result.ok) {
+                    alert(`That button is already mapped to "${result.conflictAction}". Clear it first or choose a different button.`);
+                }
                 refreshMapUI();
             });
         };
@@ -223,7 +226,12 @@ export function mount(container) {
         ACTIONS.forEach(action => {
             const sig = map[action]; const status = $(`#mapStatus-${action}`);
             if (sig) {
-                status.textContent = sig.bytes ? `✓ Mapped [${sig.bytes.join(', ')}]` : `✓ Mapped (byte ${sig.b0}, ${sig.b1})`;
+                if (sig.bytes) {
+                    const sourceTag = sig.charUuid ? ` via ${sig.charUuid.slice(0, 8)}` : '';
+                    status.textContent = `✓ Mapped [${sig.bytes.join(', ')}]${sourceTag}`;
+                } else {
+                    status.textContent = `✓ Mapped (byte ${sig.b0}, ${sig.b1})`;
+                }
                 status.className = 'map-action-status ok'; $(`#mapRow-${action}`).classList.add('mapped');
             } else {
                 status.textContent = 'Not configured'; status.className = 'map-action-status'; $(`#mapRow-${action}`).classList.remove('mapped');
