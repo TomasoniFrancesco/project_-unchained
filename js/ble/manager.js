@@ -393,11 +393,23 @@ export async function scanAndConnectController(mode = 'all') {
 //  CONTROLLER REPORT HANDLER
 // ══════════════════════════════════════════════════════════════════
 
+let lastReportSig = '';        // dedup: ignore identical consecutive reports
+const actionCooldowns = {};    // debounce: { action: lastFireTime }
+const COOLDOWN_MS = 400;       // minimum ms between same action fires
+
 function handleControllerReport(dataView) {
     if (dataView.byteLength === 0) return;
 
     const bytes = dataViewToBytes(dataView);
     if (bytes.every(b => b === 0)) return;
+
+    // ── Dedup: ignore identical consecutive reports ──
+    const sig = bytes.join(',');
+    if (sig === lastReportSig) return;   // same data as last time → skip
+    lastReportSig = sig;
+
+    // Auto-clear lastReportSig after 200ms so the same button can be pressed again
+    setTimeout(() => { if (lastReportSig === sig) lastReportSig = ''; }, 200);
 
     console.log(`[BLE] Report: [${bytes.join(', ')}]`);
 
@@ -413,14 +425,14 @@ function handleControllerReport(dataView) {
 
     // ── NORMAL MODE — match saved mappings ──
     const map = loadControllerMap();
-    for (const [action, sig] of Object.entries(map)) {
-        if (sig && sig.bytes && arraysEqual(sig.bytes, bytes)) {
+    for (const [action, sigMap] of Object.entries(map)) {
+        if (sigMap && sigMap.bytes && arraysEqual(sigMap.bytes, bytes)) {
             fire(action);
             return;
         }
         // Legacy support (old b0/b1 format)
-        if (sig && sig.b0 !== undefined) {
-            if (sig.b0 === bytes[0] && sig.b1 === (bytes[1] || 0)) {
+        if (sigMap && sigMap.b0 !== undefined) {
+            if (sigMap.b0 === bytes[0] && sigMap.b1 === (bytes[1] || 0)) {
                 fire(action);
                 return;
             }
@@ -439,6 +451,13 @@ function arraysEqual(a, b) {
 }
 
 function fire(action) {
+    // Debounce: prevent rapid-fire of same action
+    const now = Date.now();
+    if (actionCooldowns[action] && (now - actionCooldowns[action]) < COOLDOWN_MS) {
+        return; // too soon, skip
+    }
+    actionCooldowns[action] = now;
+
     if (controllerCallbacks[action]) {
         controllerCallbacks[action]();
         console.log(`[BLE] → ${action}`);

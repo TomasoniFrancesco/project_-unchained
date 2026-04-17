@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FUCK ZWIFT — Your Ride. Your Rules.</title>
+    <meta name="description"
+        content="Free indoor cycling platform. Connect your smart trainer, ride real GPX routes, track your performance.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        /* Ride-active: hide mountains, fullscreen */
+        body.ride-active {
+            overflow: hidden;
+        }
+        body.ride-active::before {
+            display: none;
+        }
+
+        /* SPA view transition */
+        #app {
+            min-height: 100vh;
+            position: relative;
+            z-index: 1;
+        }
+    </style>
+</head>
+
+<body class="with-mountains">
+
+    <!-- SPA content container -->
+    <div id="app"></div>
+
+    <!-- Bottom nav (hidden during ride) -->
+    <nav class="bottom-nav" id="mainNav">
+        <div class="bottom-nav-inner">
+            <a class="bottom-nav-item" href="#home">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"
+                    stroke-linejoin="round">
+                    <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+                    <polyline points="9 22 9 12 15 12 15 22" />
+                </svg>
+                Home
+            </a>
+            <a class="bottom-nav-item" href="#connect">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"
+                    stroke-linejoin="round">
+                    <path d="M5 12.55a11 11 0 0 1 14.08 0" />
+                    <path d="M1.42 9a16 16 0 0 1 21.16 0" />
+                    <path d="M8.53 16.11a6 6 0 0 1 6.95 0" />
+                    <line x1="12" y1="20" x2="12.01" y2="20" />
+                </svg>
+                Devices
+            </a>
+            <a class="bottom-nav-item" href="#routes">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"
+                    stroke-linejoin="round">
+                    <path d="M3 17l6-6 4 4 8-8" />
+                    <path d="M17 7h4v4" />
+                </svg>
+                Routes
+            </a>
+            <a class="bottom-nav-item" href="#history">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"
+                    stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10" />
+                    <polyline points="12 6 12 12 16 14" />
+                </svg>
+                History
+            </a>
+            <a class="bottom-nav-item" href="#profile">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"
+                    stroke-linejoin="round">
+                    <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
+                    <circle cx="12" cy="7" r="4" />
+                </svg>
+                Profile
+            </a>
+        </div>
+    </nav>
+
+    <script type="module">
+        import { init } from './js/router.js';
+        init(document.getElementById('app'), document.getElementById('mainNav'));
+    </script>
+</body>
+
+</html>
