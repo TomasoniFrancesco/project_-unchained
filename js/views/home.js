@@ -28,7 +28,7 @@ export async function mount(container) {
     </style>
     <div class="page">
         <div class="brand-header">
-            <h1 class="brand-title">FUCK ZWIFT</h1>
+            <h1 class="brand-title">UNCHAINED PROJECT</h1>
             <p class="brand-subtitle">
                 <span>Your ride. Your </span><span id="typewriter-text" class="typewriter-word"></span><span id="typewriter-cursor" class="typewriter-cursor">_</span>
             </p>

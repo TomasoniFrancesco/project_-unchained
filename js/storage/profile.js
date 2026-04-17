@@ -1,6 +1,6 @@
 /**
  * Profile storage — localStorage backed.
- * Port of fuckzwift/storage/profile.py
+ * Port of unchained_project/storage/profile.py
  */
 
 const STORAGE_KEY = 'fz_profile';

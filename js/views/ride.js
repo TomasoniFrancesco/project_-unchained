@@ -106,7 +106,7 @@ export function mount(container) {
         <div class="hud">
             <div class="top-bar">
                 <div class="top-left">
-                    <span class="brand">FUCK ZWIFT</span>
+                    <span class="brand">UNCHAINED PROJECT</span>
                     <div class="route-name-pill pill-sm"><span class="live-dot" id="liveDot"></span><span id="routeNameLabel">${route.name}</span></div>
                 </div>
                 <div class="top-actions">

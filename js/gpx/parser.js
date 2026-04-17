@@ -3,6 +3,9 @@
  * Replaces gpxpy + geopy with DOMParser + Haversine.
  */
 
+const MIN_SLOPE_DISTANCE_M = 10;
+const ELEVATION_SMOOTHING_RADIUS = 2;
+
 /**
  * Haversine distance between two lat/lon points in meters.
  */
@@ -70,19 +73,45 @@ export function getGPXName(gpxText) {
  * @returns {Array<{start_dist, end_dist, slope_pct}>}
  */
 export function computeSlopes(points) {
+    if (points.length < 2) return [];
+
+    const smoothedElevations = points.map((_, index) => {
+        let sum = 0;
+        let count = 0;
+        const start = Math.max(0, index - ELEVATION_SMOOTHING_RADIUS);
+        const end = Math.min(points.length - 1, index + ELEVATION_SMOOTHING_RADIUS);
+
+        for (let i = start; i <= end; i++) {
+            sum += points[i].elevation;
+            count += 1;
+        }
+
+        return count > 0 ? sum / count : points[index].elevation;
+    });
+
     const slopes = [];
     for (let i = 1; i < points.length; i++) {
-        const dDist = points[i].distance_from_start - points[i - 1].distance_from_start;
-        const dElev = points[i].elevation - points[i - 1].elevation;
+        let endIndex = i;
+        while (
+            endIndex < points.length
+            && (points[endIndex].distance_from_start - points[i - 1].distance_from_start) < MIN_SLOPE_DISTANCE_M
+        ) {
+            endIndex += 1;
+        }
 
-        if (dDist < 0.5) continue; // Skip GPS noise
+        if (endIndex >= points.length) endIndex = points.length - 1;
+
+        const dDist = points[endIndex].distance_from_start - points[i - 1].distance_from_start;
+        const dElev = smoothedElevations[endIndex] - smoothedElevations[i - 1];
+
+        if (dDist < 1) continue;
 
         let slope = (dElev / dDist) * 100;
         slope = Math.max(-20, Math.min(20, slope)); // clamp
 
         slopes.push({
             start_dist: points[i - 1].distance_from_start,
-            end_dist: points[i].distance_from_start,
+            end_dist: points[endIndex].distance_from_start,
             slope_pct: slope,
         });
     }

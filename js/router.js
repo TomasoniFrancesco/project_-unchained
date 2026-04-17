@@ -51,7 +51,7 @@ async function navigate(hash) {
         await module.mount(appContainer);
     } catch (err) {
         console.error(`[Router] Failed to load view "${hash}":`, err);
-        appContainer.innerHTML = `<div class="page"><div class="brand-header"><h1 class="brand-title">FUCK ZWIFT</h1></div><div class="empty-state"><div class="empty-state-icon">⚠️</div>Failed to load page: ${err.message}</div></div>`;
+        appContainer.innerHTML = `<div class="page"><div class="brand-header"><h1 class="brand-title">UNCHAINED PROJECT</h1></div><div class="empty-state"><div class="empty-state-icon">⚠️</div>Failed to load page: ${err.message}</div></div>`;
     }
 
     // Update nav highlights

@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UNCHAINED PROJECT — Your Ride. Your Rules.</title>
+    <meta name="description" content="UNCHAINED PROJECT — an open indoor cycling platform. Your ride, your rules.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        .hub {
+            width: 100%;
+            max-width: 520px;
+            display: flex;
+            flex-direction: column;
+            gap: 0.6rem;
+        }
+
+        .footer-link {
+            margin-top: 2rem;
+        }
+
+        /* Typewriter effect */
+        .typewriter-word {
+            color: #EAB308;
+            font-weight: 700;
+        }
+
+        .typewriter-cursor {
+            color: #EAB308;
+            font-weight: 700;
+            animation: cursorBlink 0.8s step-end infinite;
+        }
+
+        .typewriter-cursor.hidden {
+            opacity: 0;
+        }
+
+        @keyframes cursorBlink {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0;
+            }
+        }
+    </style>
+</head>
+
+<body class="with-mountains">
+
+    <div class="page">
+        <div class="brand-header">
+            <h1 class="brand-title">UNCHAINED PROJECT</h1>
+            <p class="brand-subtitle">
+                <span>Your ride. Your </span><span id="typewriter-text" class="typewriter-word"></span><span
+                    id="typewriter-cursor" class="typewriter-cursor">_</span>
+            </p>
+        </div>
+
+        <div class="hub">
+            <!-- Devices -->
+            <a class="card card-interactive stagger-1" href="/connect" id="connectCard">
+                <div class="nav-card">
+                    <div class="nav-card-icon icon-blue">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M6.5 6.5L17.5 17.5" />
+                            <path d="M7 12L2 17l5 5" />
+                            <path d="M17 12l5-5-5-5" />
+                        </svg>
+                    </div>
+                    <div class="nav-card-body">
+                        <div class="nav-card-title">Devices</div>
+                        <div class="nav-card-desc" id="deviceDesc">Connect smart trainer & controllers</div>
+                        <div class="status-pill disconnected" id="trainerPill">
+                            <span class="status-dot"></span>
+                            <span id="trainerPillText">Not connected</span>
+                        </div>
+                    </div>
+                    <div class="nav-card-chevron">›</div>
+                </div>
+            </a>
+
+            <div class="card-divider"></div>
+
+            <!-- Routes -->
+            <a class="card card-interactive stagger-2" href="/routes">
+                <div class="nav-card">
+                    <div class="nav-card-icon icon-green">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M3 17l6-6 4 4 8-8" />
+                            <path d="M17 7h4v4" />
+                        </svg>
+                    </div>
+                    <div class="nav-card-body">
+                        <div class="nav-card-title">Routes</div>
+                        <div class="nav-card-desc">Choose a route and start riding</div>
+                    </div>
+                    <div class="nav-card-chevron">›</div>
+                </div>
+            </a>
+
+            <!-- History -->
+            <a class="card card-interactive stagger-3" href="/history">
+                <div class="nav-card">
+                    <div class="nav-card-icon icon-purple">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10" />
+                            <polyline points="12 6 12 12 16 14" />
+                        </svg>
+                    </div>
+                    <div class="nav-card-body">
+                        <div class="nav-card-title">History</div>
+                        <div class="nav-card-desc">View your past rides and stats</div>
+                    </div>
+                    <div class="nav-card-chevron">›</div>
+                </div>
+            </a>
+        </div>
+
+        <div class="footer-link stagger-4">
+            <a class="btn btn-ghost" href="/profile">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
+                    <circle cx="12" cy="7" r="4" />
+                </svg>
+                PROFILE & SETTINGS
+            </a>
+        </div>
+    </div>
+
+    <!-- Bottom nav -->
+    <nav class="bottom-nav">
+        <div class="bottom-nav-inner">
+            <a class="bottom-nav-item active" href="/">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"
+                    stroke-linejoin="round">
+                    <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+                    <polyline points="9 22 9 12 15 12 15 22" />
+                </svg>
+                Home
+            </a>
+            <a class="bottom-nav-item" href="/routes">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"
+                    stroke-linejoin="round">
+                    <path d="M3 17l6-6 4 4 8-8" />
+                    <path d="M17 7h4v4" />
+                </svg>
+                Routes
+            </a>
+            <a class="bottom-nav-item" href="/history">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"
+                    stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10" />
+                    <polyline points="12 6 12 12 16 14" />
+                </svg>
+                History
+            </a>
+            <a class="bottom-nav-item" href="/profile">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"
+                    stroke-linejoin="round">
+                    <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
+                    <circle cx="12" cy="7" r="4" />
+                </svg>
+                Profile
+            </a>
+        </div>
+    </nav>
+
+    <script>
+        const source = new EventSource('/events');
+        source.onmessage = function (e) {
+            const s = JSON.parse(e.data);
+            const pill = document.getElementById('trainerPill');
+            const pillText = document.getElementById('trainerPillText');
+            const desc = document.getElementById('deviceDesc');
+            const controllers = s.controllers || [];
+            const connCtrl = controllers.filter(c => c.status === 'connected').length;
+
+            if (s.trainer_status === 'connected') {
+                pill.className = 'status-pill connected';
+                const parts = [s.trainer_name || 'Trainer'];
+                if (connCtrl > 0) parts.push(connCtrl + ' ctrl');
+                pillText.textContent = parts.join(' + ');
+                desc.textContent = 'Trainer connected' + (connCtrl > 0 ? ', ' + connCtrl + ' controller' + (connCtrl > 1 ? 's' : '') : '');
+            } else if (s.trainer_status === 'connecting') {
+                pill.className = 'status-pill checking';
+                pillText.textContent = 'Connecting…';
+            } else if (connCtrl > 0) {
+                pill.className = 'status-pill checking';
+                pillText.textContent = connCtrl + ' controller' + (connCtrl > 1 ? 's' : '') + ' (no trainer)';
+            } else {
+                pill.className = 'status-pill disconnected';
+                pillText.textContent = 'Not connected';
+                desc.textContent = 'Connect smart trainer & controllers';
+            }
+        };
+    </script>
+
+    <!-- Typewriter effect — vanilla JS port of the React <Typewriter> component -->
+    <script>
+        (function () {
+            const texts = ["rules.", "way.", "freedom.", "power."];
+            const speed = 70;          // ms per character typed
+            const deleteSpeed = 40;    // ms per character deleted
+            const waitTime = 1500;     // ms pause after full word
+            const initialDelay = 600;  // ms before first character
+
+            const el = document.getElementById('typewriter-text');
+            const cursor = document.getElementById('typewriter-cursor');
+            let textIndex = 0;
+            let charIndex = 0;
+            let isDeleting = false;
+            let displayText = '';
+
+            function tick() {
+                const currentText = texts[textIndex];
+
+                if (isDeleting) {
+                    // Hide cursor while deleting
+                    cursor.classList.add('hidden');
+                    if (displayText.length > 0) {
+                        displayText = displayText.slice(0, -1);
+                        el.textContent = displayText;
+                        setTimeout(tick, deleteSpeed);
+                    } else {
+                        isDeleting = false;
+                        textIndex = (textIndex + 1) % texts.length;
+                        charIndex = 0;
+                        cursor.classList.remove('hidden');
+                        setTimeout(tick, 300);
+                    }
+                } else {
+                    // Hide cursor while typing
+                    cursor.classList.add('hidden');
+                    if (charIndex < currentText.length) {
+                        displayText += currentText[charIndex];
+                        el.textContent = displayText;
+                        charIndex++;
+                        setTimeout(tick, speed);
+                    } else {
+                        // Done typing — show blinking cursor, then start deleting
+                        cursor.classList.remove('hidden');
+                        setTimeout(function () {
+                            isDeleting = true;
+                            tick();
+                        }, waitTime);
+                    }
+                }
+            }
+
+            // Start after initial delay
+            setTimeout(tick, initialDelay);
+        })();
+    </script>
+</body>
+
+</html>

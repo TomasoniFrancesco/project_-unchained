@@ -15,7 +15,7 @@ const DEFAULT_ROUTES = [
             emoji: '⛰️',
         },
         gpx: `<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="FUCK_ZWIFT" xmlns="http://www.topografix.com/GPX/1/1">
+<gpx version="1.1" creator="UNCHAINED_PROJECT" xmlns="http://www.topografix.com/GPX/1/1">
   <trk><name>Col du Galibier</name><trkseg>
     <trkpt lat="45.2200" lon="6.4700"><ele>700</ele></trkpt>
     <trkpt lat="45.2218" lon="6.4718"><ele>730</ele></trkpt>
@@ -66,7 +66,7 @@ const DEFAULT_ROUTES = [
             emoji: '🏁',
         },
         gpx: `<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="FUCK_ZWIFT" xmlns="http://www.topografix.com/GPX/1/1">
+<gpx version="1.1" creator="UNCHAINED_PROJECT" xmlns="http://www.topografix.com/GPX/1/1">
   <trk><name>Richmond Flat Loop</name><trkseg>
     <trkpt lat="37.5400" lon="-77.4350"><ele>10</ele></trkpt>
     <trkpt lat="37.5418" lon="-77.4332"><ele>12</ele></trkpt>

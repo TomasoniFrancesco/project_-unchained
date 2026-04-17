@@ -130,7 +130,7 @@ export async function mount(container) {
     </style>
     <div class="page">
         <div class="brand-header">
-            <h1 class="brand-title">FUCK ZWIFT</h1>
+            <h1 class="brand-title">UNCHAINED PROJECT</h1>
             <p class="brand-subtitle">Select your route</p>
         </div>
         <div class="routes-grid" id="routesList"></div>

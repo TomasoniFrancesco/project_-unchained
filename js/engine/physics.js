@@ -1,6 +1,6 @@
 /**
  * Physics engine — slope smoothing, rate-limiting, and force model.
- * Direct port of fuckzwift/ride/physics.py
+ * Direct port of unchained_project/ride/physics.py
  */
 
 export class PhysicsEngine {
