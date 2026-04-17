@@ -1,13 +1,13 @@
 /**
  * Ride engine — main ride loop, data accumulation, finalization.
- * Port of fuckzwift/ride/engine.py — uses setInterval instead of asyncio.
+ * Port of unchained_project/ride/engine.py — uses setInterval instead of asyncio.
  */
 
 import { state } from '../state.js';
 import { PhysicsEngine } from './physics.js';
 import { GearSystem } from './gear.js';
 import { getSlopeAtDistance, getElevationAtDistance, computeSlopes, getTotalDistance } from '../gpx/parser.js';
-import { sendSimulationParams } from '../ble/manager.js';
+import { sendSimulationParams, releaseTrainerResistance } from '../ble/manager.js';
 import { loadProfile, estimateCalories } from '../storage/profile.js';
 import { loadConfig } from '../storage/config.js';
 import { saveActivity } from '../storage/activities.js';
@@ -143,6 +143,9 @@ export function startRide(route) {
         recordTrackSample(0, 0);
     }
 
+    // Clear any residual trainer load from the previous session before the first loop tick.
+    void sendSimulationParams(0);
+
     startTime = performance.now() / 1000;
     lastTime = startTime;
     pauseStartedAt = null;
@@ -186,6 +189,7 @@ function rideLoop() {
             ride_active: false,
         });
         recordTrackSample(totalDistance, state.get('elapsed'));
+        void releaseTrainerResistance();
         console.log('[RIDE] Complete!');
         clearInterval(rideInterval);
         rideInterval = null;
@@ -250,6 +254,7 @@ export function stopRide() {
         clearInterval(rideInterval);
         rideInterval = null;
     }
+    void releaseTrainerResistance();
     console.log('[RIDE] Stopped by user');
 }
 

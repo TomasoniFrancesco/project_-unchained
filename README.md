@@ -1,4 +1,4 @@
-# FUCK ZWIFT — Web Edition 🚴
+# UNCHAINED PROJECT — Web Edition 🚴
 
 **Piattaforma di ciclismo indoor gratuita e open-source.**  
 Funziona interamente nel browser — zero installazione, zero backend.
@@ -17,7 +17,7 @@ npx -y serve .
 ### Opzione 2: GitHub Pages
 1. Fork/push questa repo su GitHub
 2. Settings → Pages → Source: `main` branch, root `/`
-3. Apri `https://tuousername.github.io/FUCK_ZWIFT_WEB/`
+3. Apri `https://tuousername.github.io/UNCHAINED_PROJECT_WEB/`
 
 ## 🔧 Requisiti
 
@@ -34,7 +34,7 @@ npx -y serve .
 ## 📁 Struttura
 
 ```
-FUCK_ZWIFT_WEB/
+UNCHAINED_PROJECT_WEB/
 ├── index.html          ← Home page
 ├── connect.html        ← Connessione trainer BLE
 ├── routes.html         ← Selezione percorso GPX

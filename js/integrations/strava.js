@@ -1,6 +1,6 @@
 /**
  * Strava integration — OAuth + activity upload.
- * Port of fuckzwift/integrations/strava.py for browser.
+ * Port of unchained_project/integrations/strava.py for browser.
  *
  * Flow:
  * 1. User enters client_id + client_secret (stored in localStorage config)
@@ -143,8 +143,8 @@ export async function uploadToStrava(gpxXml, activityName) {
     const blob = new Blob([gpxXml], { type: 'application/gpx+xml' });
     formData.append('file', blob, 'ride.gpx');
     formData.append('data_type', 'gpx');
-    formData.append('name', activityName || 'FUCK ZWIFT Ride');
-    formData.append('description', `Uploaded from FUCK ZWIFT on ${new Date().toISOString().slice(0, 10)}`);
+    formData.append('name', activityName || 'UNCHAINED PROJECT Ride');
+    formData.append('description', `Uploaded from UNCHAINED PROJECT on ${new Date().toISOString().slice(0, 10)}`);
     formData.append('activity_type', 'VirtualRide');
 
     const resp = await fetch(UPLOAD_URL, {

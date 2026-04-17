@@ -1,6 +1,6 @@
 /**
  * FTMS BLE protocol — Web Bluetooth implementation.
- * Port of fuckzwift/ble/ftms.py
+ * Port of unchained_project/ble/ftms.py
  *
  * Handles:
  * - Indoor Bike Data notifications (power, cadence, speed)
@@ -14,9 +14,24 @@ const FTMS_CONTROL_POINT  = '00002ad9-0000-1000-8000-00805f9b34fb';
 
 // FTMS control opcodes
 const OP_REQUEST_CONTROL  = 0x00;
-const OP_START            = 0x07;
-const OP_STOP             = 0x08;
-const OP_SET_SIM_PARAMS   = 0x11;
+const OP_RESET           = 0x01;
+const OP_START           = 0x07;
+const OP_STOP            = 0x08;
+const OP_SET_SIM_PARAMS  = 0x11;
+
+function delay(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function writeControlPoint(controlPoint, payload) {
+    if (!controlPoint) return;
+    const data = payload instanceof Uint8Array ? payload : new Uint8Array(payload);
+    if (typeof controlPoint.writeValueWithResponse === 'function') {
+        await controlPoint.writeValueWithResponse(data);
+        return;
+    }
+    await controlPoint.writeValue(data);
+}
 
 /**
  * Subscribe to Indoor Bike Data notifications.
@@ -117,8 +132,29 @@ export async function getControlPoint(server) {
 export async function requestControl(controlPoint) {
     if (!controlPoint) return;
     const buf = new Uint8Array([OP_REQUEST_CONTROL]);
-    await controlPoint.writeValue(buf);
+    await writeControlPoint(controlPoint, buf);
     console.log('[FTMS] Control requested');
+}
+
+export async function resetToSimMode(controlPoint) {
+    if (!controlPoint) return;
+    await writeControlPoint(controlPoint, new Uint8Array([OP_RESET]));
+    await delay(500);
+    console.log('[FTMS] Reset to simulation mode');
+}
+
+export async function startWorkout(controlPoint) {
+    if (!controlPoint) return;
+    await writeControlPoint(controlPoint, new Uint8Array([OP_START]));
+    await delay(300);
+    console.log('[FTMS] Workout started');
+}
+
+export async function stopWorkout(controlPoint) {
+    if (!controlPoint) return;
+    await writeControlPoint(controlPoint, new Uint8Array([OP_STOP]));
+    await delay(300);
+    console.log('[FTMS] Workout stopped');
 }
 
 /**
@@ -144,7 +180,7 @@ export async function setSimulationParams(controlPoint, grade) {
     view.setUint8(5, 40);              // CRR = 0.004
     view.setUint8(6, 51);              // CW = 0.51
 
-    await controlPoint.writeValue(new Uint8Array(buf));
+    await writeControlPoint(controlPoint, new Uint8Array(buf));
 }
 
 export { FTMS_SERVICE };

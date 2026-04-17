@@ -1,6 +1,6 @@
 /**
  * GPX export — generate GPX XML from ride track samples and trigger download.
- * Port of fuckzwift/storage/export.py
+ * Port of unchained_project/storage/export.py
  */
 
 /**
@@ -17,7 +17,7 @@ export function buildGPX(routeName, startedAt, samples) {
     }).join('\n');
 
     return `<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="FUCK_ZWIFT_WEB"
+<gpx version="1.1" creator="UNCHAINED_PROJECT_WEB"
      xmlns="http://www.topografix.com/GPX/1/1">
   <metadata>
     <name>${escapeXml(routeName)}</name>

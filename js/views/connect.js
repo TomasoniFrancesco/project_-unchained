@@ -76,7 +76,7 @@ export function mount(container) {
     </style>
     <div class="page connect-page">
         <div class="brand-header">
-            <h1 class="brand-title">FUCK ZWIFT</h1>
+            <h1 class="brand-title">UNCHAINED PROJECT</h1>
             <p class="brand-subtitle">Connect your devices</p>
         </div>
         <div style="width:100%;max-width:640px;margin-bottom:1.2rem;">

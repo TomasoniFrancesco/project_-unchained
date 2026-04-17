@@ -1,6 +1,6 @@
 /**
  * Virtual gear system — maintains gear state and computes resistance offset.
- * Direct port of fuckzwift/ride/gear.py
+ * Direct port of unchained_project/ride/gear.py
  */
 
 export class GearSystem {

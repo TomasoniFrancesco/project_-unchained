@@ -7,7 +7,16 @@
  */
 
 import { state } from '../state.js';
-import { FTMS_SERVICE, subscribeIndoorBikeData, getControlPoint, requestControl } from './ftms.js';
+import {
+    FTMS_SERVICE,
+    subscribeIndoorBikeData,
+    getControlPoint,
+    requestControl,
+    resetToSimMode,
+    startWorkout,
+    stopWorkout,
+    setSimulationParams,
+} from './ftms.js';
 
 // ── BLE Service UUIDs ──────────────────────────────────────────────
 // NOTE: HID Service (0x1812) is BLOCKLISTED by Chrome's Web Bluetooth.
@@ -281,7 +290,12 @@ export async function scanAndConnectTrainer(dataCallback) {
         });
 
         trainerControlPoint = await getControlPoint(trainerServer);
-        if (trainerControlPoint) await requestControl(trainerControlPoint);
+        if (trainerControlPoint) {
+            await requestControl(trainerControlPoint);
+            await resetToSimMode(trainerControlPoint);
+            await startWorkout(trainerControlPoint);
+            await setSimulationParams(trainerControlPoint, 0);
+        }
 
         state.set('trainer_status', 'connected');
         console.log('[BLE] Trainer fully connected');
@@ -302,10 +316,31 @@ export async function scanAndConnectTrainer(dataCallback) {
 export async function sendSimulationParams(grade) {
     if (!trainerControlPoint) return;
     try {
-        const { setSimulationParams } = await import('./ftms.js');
         await setSimulationParams(trainerControlPoint, grade);
     } catch (err) {
         console.warn('[BLE] Failed to send simulation params:', err.message);
+    }
+}
+
+export async function releaseTrainerResistance() {
+    const controlPoint = trainerControlPoint;
+    if (!controlPoint) return;
+    try {
+        await setSimulationParams(controlPoint, 0);
+    } catch (err) {
+        console.warn('[BLE] Failed to zero trainer grade:', err.message);
+    }
+
+    try {
+        await stopWorkout(controlPoint);
+    } catch (err) {
+        console.warn('[BLE] Failed to stop workout cleanly:', err.message);
+    }
+
+    try {
+        await resetToSimMode(controlPoint);
+    } catch (err) {
+        console.warn('[BLE] Failed to reset trainer mode:', err.message);
     }
 }
 
@@ -314,6 +349,7 @@ export function isTrainerConnected() {
 }
 
 export function disconnectTrainer() {
+    void releaseTrainerResistance();
     if (trainerServer && trainerServer.connected) trainerServer.disconnect();
     trainerServer = null; trainerControlPoint = null;
     bikeDataChar  = null; trainerDevice = null;
