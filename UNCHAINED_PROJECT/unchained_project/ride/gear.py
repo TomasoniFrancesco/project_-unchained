@@ -17,10 +17,10 @@ class GearSystem:
         self.debounce_ms = debounce_ms
         self.smoothing_factor = smoothing
 
-        self.current_gear = self.gear_neutral
+        self.current_gear = self.gear_min
         self._last_shift_time = 0.0
-        self._target_offset = 0.0
-        self._smooth_offset = 0.0
+        self._target_offset = (self.current_gear - self.gear_neutral) * self.step_grade
+        self._smooth_offset = self._target_offset
 
     def shift_up(self):
         """Shift to a harder gear (more resistance)."""

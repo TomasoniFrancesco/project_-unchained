@@ -147,7 +147,7 @@ export function startRide(route) {
         slope: 0,
         effective_slope: 0,
         gear: gears.getDisplayGear(),
-        gear_offset: 0,
+        gear_offset: Math.round(gears.getTargetOffset() * 100) / 100,
         calories: 0,
     });
 
