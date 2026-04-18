@@ -13,6 +13,9 @@ const DEFAULT_ROUTES = [
             name: 'Col du Galibier',
             description: 'Epic Alpine climb. 1400m of elevation gain.',
             emoji: '⛰️',
+            source: 'default',
+            route_type: 'linear_climb',
+            difficulty: 'hard',
         },
         gpx: `<?xml version="1.0" encoding="UTF-8"?>
 <gpx version="1.1" creator="UNCHAINED_PROJECT" xmlns="http://www.topografix.com/GPX/1/1">
@@ -64,6 +67,9 @@ const DEFAULT_ROUTES = [
             name: 'Richmond Flat Loop',
             description: 'Rolling criterium loop. Great for intervals.',
             emoji: '🏁',
+            source: 'default',
+            route_type: 'rolling',
+            difficulty: 'medium',
         },
         gpx: `<?xml version="1.0" encoding="UTF-8"?>
 <gpx version="1.1" creator="UNCHAINED_PROJECT" xmlns="http://www.topografix.com/GPX/1/1">
