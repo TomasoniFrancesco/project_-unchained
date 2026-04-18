@@ -61,7 +61,7 @@ class GearSystem:
         return self.current_gear
 
     def get_display_gear(self):
-        return self.current_gear - self.gear_neutral
+        return self.current_gear
 
     def get_target_offset(self):
         return self._target_offset

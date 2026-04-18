@@ -54,7 +54,7 @@ export class GearSystem {
     }
 
     getGear() { return this.currentGear; }
-    getDisplayGear() { return this.currentGear - this.gearNeutral; }
+    getDisplayGear() { return this.currentGear; }
     getTargetOffset() { return this._targetOffset; }
 
     reset(config = {}) {
