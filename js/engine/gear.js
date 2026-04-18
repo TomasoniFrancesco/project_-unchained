@@ -8,6 +8,7 @@ export class GearSystem {
         count = 21,
         neutral = 5,
         stepGrade = 0.5,
+        maxDifficultyScale = null,
         debounceMs = 200,
         smoothing = 0.3,
         minDifficultyScale = 0.15,
@@ -20,7 +21,7 @@ export class GearSystem {
         this.debounceMs = debounceMs;
         this.smoothingFactor = smoothing;
         this.minDifficultyScale = Math.max(0, Math.min(minDifficultyScale, 1));
-        this.maxDifficultyScale = Math.max(1, 1 + Math.max(0, stepGrade));
+        this.maxDifficultyScale = Math.max(1, maxDifficultyScale ?? (1 + Math.max(0, stepGrade)));
         this.downhillScale = Math.max(0, Math.min(downhillScale, 1));
 
         this.currentGear = this.gearMin;
@@ -97,13 +98,16 @@ export class GearSystem {
         if (config.count !== undefined) this.gearMax = config.count - 1;
         if (config.neutral !== undefined) this.gearNeutral = Math.max(this.gearMin, Math.min(config.neutral, this.gearMax));
         if (config.step_grade !== undefined) this.stepGrade = config.step_grade;
+        if (config.max_difficulty_scale !== undefined) this.maxDifficultyScale = Math.max(1, config.max_difficulty_scale);
         if (config.min_difficulty_scale !== undefined) {
             this.minDifficultyScale = Math.max(0, Math.min(config.min_difficulty_scale, 1));
         }
         if (config.downhill_scale !== undefined) {
             this.downhillScale = Math.max(0, Math.min(config.downhill_scale, 1));
         }
-        this.maxDifficultyScale = Math.max(1, 1 + Math.max(0, this.stepGrade));
+        if (config.max_difficulty_scale === undefined) {
+            this.maxDifficultyScale = Math.max(1, 1 + Math.max(0, this.stepGrade));
+        }
         this.currentGear = this.gearMin;
         this._lastShiftTime = 0;
         this._targetScale = this._computeScaleForGear(this.currentGear);

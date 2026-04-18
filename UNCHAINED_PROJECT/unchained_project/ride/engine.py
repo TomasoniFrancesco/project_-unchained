@@ -192,6 +192,7 @@ async def do_start_ride(gear_system, physics_engine, profile, strava_service, co
         count=config.gear.count,
         neutral=config.gear.neutral,
         step_grade=config.gear.step_grade,
+        max_difficulty_scale=config.gear.max_difficulty_scale,
         debounce_ms=config.gear.debounce_ms,
         smoothing=config.gear.smoothing,
         min_difficulty_scale=config.gear.min_difficulty_scale,

@@ -135,6 +135,7 @@ export function startRide(route) {
         config.gear.count,
         config.gear.neutral,
         config.gear.step_grade,
+        config.gear.max_difficulty_scale,
         config.gear.debounce_ms,
         config.gear.smoothing,
         config.gear.min_difficulty_scale,

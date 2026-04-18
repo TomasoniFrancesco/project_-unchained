@@ -11,6 +11,7 @@ const DEFAULTS = {
         count: 21,
         neutral: 5,
         step_grade: 0.5,
+        max_difficulty_scale: 3.0,
         debounce_ms: 200,
         smoothing: 0.3,
         min_difficulty_scale: 0.15,

@@ -13,6 +13,7 @@ class GearSystem:
         count=21,
         neutral=5,
         step_grade=0.5,
+        max_difficulty_scale=None,
         debounce_ms=200,
         smoothing=0.3,
         min_difficulty_scale=0.15,
@@ -25,7 +26,10 @@ class GearSystem:
         self.debounce_ms = debounce_ms
         self.smoothing_factor = smoothing
         self.min_difficulty_scale = max(0.0, min(float(min_difficulty_scale), 1.0))
-        self.max_difficulty_scale = max(1.0, 1.0 + max(0.0, float(step_grade)))
+        if max_difficulty_scale is None:
+            self.max_difficulty_scale = max(1.0, 1.0 + max(0.0, float(step_grade)))
+        else:
+            self.max_difficulty_scale = max(1.0, float(max_difficulty_scale))
         self.downhill_scale = max(0.0, min(float(downhill_scale), 1.0))
 
         self.current_gear = self.gear_min

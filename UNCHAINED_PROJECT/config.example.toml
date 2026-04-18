@@ -33,8 +33,10 @@ client_secret = ""
 count = 21
 # Neutral gear (0-indexed, this gear = 1.0x trainer gradient feel)
 neutral = 5
-# Extra trainer feel range above neutral (0.5 = up to 1.5x)
+# Legacy compatibility knob for older configs
 step_grade = 0.5
+# Highest gear gradient feel scale
+max_difficulty_scale = 3.0
 # Debounce between shifts (milliseconds)
 debounce_ms = 200
 # Smoothing factor for gear transitions (0 = frozen, 1 = instant)
