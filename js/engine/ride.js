@@ -7,7 +7,7 @@ import { state } from '../state.js';
 import { PhysicsEngine } from './physics.js';
 import { GearSystem } from './gear.js';
 import { getSlopeAtDistance, getElevationAtDistance, computeSlopes, getTotalDistance } from '../gpx/parser.js';
-import { sendSimulationParams, releaseTrainerResistance } from '../ble/manager.js';
+import * as bleManager from '../ble/manager.js';
 import { loadProfile, estimateCalories } from '../storage/profile.js';
 import { loadConfig } from '../storage/config.js';
 import { saveActivity } from '../storage/activities.js';
@@ -33,6 +33,20 @@ let rideFinalized = false;
 
 // Data accumulators
 let rideData = null;
+
+function sendTrainerSimulationParams(grade) {
+    if (typeof bleManager.sendSimulationParams === 'function') {
+        return bleManager.sendSimulationParams(grade);
+    }
+    return undefined;
+}
+
+function releaseTrainerLoad() {
+    if (typeof bleManager.releaseTrainerResistance === 'function') {
+        return bleManager.releaseTrainerResistance();
+    }
+    return sendTrainerSimulationParams(0);
+}
 
 function newRideData() {
     return {
@@ -144,7 +158,7 @@ export function startRide(route) {
     }
 
     // Clear any residual trainer load from the previous session before the first loop tick.
-    void sendSimulationParams(0);
+    void sendTrainerSimulationParams(0);
 
     startTime = performance.now() / 1000;
     lastTime = startTime;
@@ -189,7 +203,7 @@ function rideLoop() {
             ride_active: false,
         });
         recordTrackSample(totalDistance, state.get('elapsed'));
-        void releaseTrainerResistance();
+        void releaseTrainerLoad();
         console.log('[RIDE] Complete!');
         clearInterval(rideInterval);
         rideInterval = null;
@@ -242,7 +256,7 @@ function rideLoop() {
     });
 
     // Send simulation to trainer
-    sendSimulationParams(effectiveSlope);
+    sendTrainerSimulationParams(effectiveSlope);
 }
 
 /**
@@ -254,7 +268,7 @@ export function stopRide() {
         clearInterval(rideInterval);
         rideInterval = null;
     }
-    void releaseTrainerResistance();
+    void releaseTrainerLoad();
     console.log('[RIDE] Stopped by user');
 }
 
