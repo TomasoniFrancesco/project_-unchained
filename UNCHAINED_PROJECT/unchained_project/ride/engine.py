@@ -189,7 +189,7 @@ async def do_start_ride(gear_system, physics_engine, profile, strava_service, co
     physics_engine.reset()
     reset_ride_data()
     state["gear"] = gear_system.get_display_gear()
-    state["gear_offset"] = 0.0
+    state["gear_offset"] = round(gear_system.get_target_offset(), 2)
 
     if points:
         state["elevation"] = points[0]["elevation"]

@@ -12,10 +12,10 @@ export class GearSystem {
         this.debounceMs = debounceMs;
         this.smoothingFactor = smoothing;
 
-        this.currentGear = this.gearNeutral;
+        this.currentGear = this.gearMin;
         this._lastShiftTime = 0;
-        this._targetOffset = 0;
-        this._smoothOffset = 0;
+        this._targetOffset = (this.currentGear - this.gearNeutral) * this.stepGrade;
+        this._smoothOffset = this._targetOffset;
     }
 
     shiftUp() {
@@ -61,9 +61,9 @@ export class GearSystem {
         if (config.count) this.gearMax = config.count - 1;
         if (config.neutral) this.gearNeutral = config.neutral;
         if (config.step_grade) this.stepGrade = config.step_grade;
-        this.currentGear = this.gearNeutral;
+        this.currentGear = this.gearMin;
         this._lastShiftTime = 0;
-        this._targetOffset = 0;
-        this._smoothOffset = 0;
+        this._targetOffset = (this.currentGear - this.gearNeutral) * this.stepGrade;
+        this._smoothOffset = this._targetOffset;
     }
 }
