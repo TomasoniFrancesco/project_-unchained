@@ -372,6 +372,8 @@ function syncControllerState(slot) {
     state.update({
         [`controller_${n}_status`]: c.status,
         [`controller_${n}_name`]:   c.name,
+        [`controller_${n}_input_ready`]: !!c.inputReady,
+        [`controller_${n}_issue`]: c.issue || '',
     });
 }
 
@@ -405,6 +407,15 @@ function resetControllerSlot(slot) {
     ctrl.name = '';
     ctrl.status = 'disconnected';
     ctrl.issue = '';
+    syncControllerState(slot);
+}
+
+function markControllerInputReady(slot, charUuid) {
+    const ctrl = controllers[slot];
+    if (ctrl.inputReady && String(ctrl.issue || '').startsWith('Input verified via')) return;
+
+    ctrl.inputReady = true;
+    ctrl.issue = `Input verified via ${shortUuid(charUuid)}`;
     syncControllerState(slot);
 }
 
@@ -631,9 +642,11 @@ export async function scanAndConnectController(mode = 'all') {
         if (!subscribed) {
             console.warn(`[BLE] Controller ${n}: no notifiable characteristics — buttons won't work.`);
             ctrl.issue = 'Connected, but no button channel was detected.';
+        } else {
+            ctrl.issue = 'Connected. Press any button to verify the correct remote.';
         }
 
-        ctrl.inputReady = subscribed;
+        ctrl.inputReady = false;
         ctrl.status = 'connected';
         syncControllerState(slot);
         console.log(`[BLE] Controller ${n} ready (subscribed: ${subscribed})`);
@@ -769,6 +782,8 @@ function handleControllerReport(report) {
     previous.stateSig = parsed.stateSig;
     previous.changedAt = Date.now();
     reportStates.set(sourceKey, previous);
+
+    markControllerInputReady(slot, charUuid);
 
     console.log(`[BLE] ${label} report ${shortUuid(serviceUuid)} / ${shortUuid(charUuid)}: [${bytes.join(', ')}]`);
 

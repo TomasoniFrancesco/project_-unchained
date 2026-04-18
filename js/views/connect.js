@@ -185,7 +185,7 @@ export function mount(container) {
             $('#mapPanel').style.display = 'block';
             refreshMapUI();
             if (result.inputReady === false) {
-                alert('The remote connected, but no button input channel was detected. This usually means the wrong Bluetooth entry was selected, or this device needs "Scan all devices" / a custom service UUID.');
+                alert(`${result.issue || 'The remote connected, but it is not verified yet.'} Press any button on that remote now. If it never becomes "Input ready", you probably selected the wrong Bluetooth entry.`);
             }
         }
     }
@@ -285,11 +285,12 @@ export function mount(container) {
             if (cStatus === 'connected' || cStatus === 'connecting') {
                 const dotClass = cStatus === 'connected' ? 'connected' : 'connecting';
                 const statusText = cStatus === 'connected'
-                    ? (info.inputReady ? 'Connected ✓ Input ready' : 'Connected, but buttons not detected')
+                    ? (info.inputReady ? 'Connected ✓ Input ready' : 'Connected, waiting for first button press')
                     : 'Connecting…';
                 const shortId = info.id ? info.id.slice(-8).toUpperCase() : '';
                 const idLine = shortId ? `<div class="device-submeta">Device ID ${shortId} • Slot ${slot + 1}</div>` : `<div class="device-submeta">Slot ${slot + 1}</div>`;
-                const issueLine = info.issue ? `<div class="device-submeta device-warning">${info.issue}</div>` : '';
+                const issueClass = info.inputReady ? 'device-submeta' : 'device-submeta device-warning';
+                const issueLine = info.issue ? `<div class="${issueClass}">${info.issue}</div>` : '';
                 rows.push(`<div class="card device-row"><div class="device-dot ${dotClass}"></div><div style="flex:1;min-width:0;"><div class="device-name">${cName || 'Controller ' + (slot+1)}</div><div class="device-meta">${statusText}</div>${idLine}${issueLine}</div><span class="type-badge controller">controller</span><button class="disconnect-btn" data-slot="${slot}">✕</button></div>`);
             }
         }

@@ -15,8 +15,12 @@ class AppState extends EventTarget {
         // Controllers (2 slots)
         controller_1_status: 'disconnected',
         controller_1_name: '',
+        controller_1_input_ready: false,
+        controller_1_issue: '',
         controller_2_status: 'disconnected',
         controller_2_name: '',
+        controller_2_input_ready: false,
+        controller_2_issue: '',
 
         // Ride
         ride_active: false,
