@@ -868,10 +868,10 @@ export async function mount(container) {
     <div class="gen-toast" id="genToast">Route saved to your library.</div>
     `;
 
+    const $ = (selector) => container.querySelector(selector);
+
     await ensureDefaultRoutes();
     await refreshRoutes();
-
-    const $ = (selector) => container.querySelector(selector);
 
     const startBtn = $('#startBtn');
     const browseBtn = $('#browseBtn');
