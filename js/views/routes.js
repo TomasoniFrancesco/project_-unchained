@@ -689,7 +689,6 @@ export async function mount(container) {
                 <div class="toolbar-top">
                     <div class="toolbar-copy">
                         <div class="toolbar-title">Build, import, and manage routes</div>
-                        <div class="toolbar-subtitle">Top controls stay within reach, imported files keep their own entries, and generated routes now preserve the requested distance.</div>
                     </div>
                     <div class="toolbar-actions">
                         <button class="btn btn-primary compact-btn" id="generateBtn">Generate Route</button>

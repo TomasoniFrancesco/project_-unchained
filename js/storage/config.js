@@ -13,6 +13,8 @@ const DEFAULTS = {
         step_grade: 0.5,
         debounce_ms: 200,
         smoothing: 0.3,
+        min_difficulty_scale: 0.15,
+        downhill_scale: 0.5,
     },
     // Physics
     physics: {

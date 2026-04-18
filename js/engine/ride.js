@@ -128,6 +128,8 @@ export function startRide(route) {
         config.gear.step_grade,
         config.gear.debounce_ms,
         config.gear.smoothing,
+        config.gear.min_difficulty_scale,
+        config.gear.downhill_scale,
     );
 
     rideData = newRideData();
@@ -147,7 +149,7 @@ export function startRide(route) {
         slope: 0,
         effective_slope: 0,
         gear: gears.getDisplayGear(),
-        gear_offset: Math.round(gears.getTargetOffset() * 100) / 100,
+        gear_offset: 0,
         calories: 0,
     });
 
@@ -231,7 +233,7 @@ function rideLoop() {
     recordTrackSample(distance, elapsed);
 
     // Gear offset
-    const gearOffset = gears.getResistanceOffset();
+    const gearOffset = gears.getResistanceOffset(smoothedSlope);
     const effectiveSlope = Math.round(Math.max(-40, Math.min(40, smoothedSlope + gearOffset)) * 100) / 100;
 
     // Calories

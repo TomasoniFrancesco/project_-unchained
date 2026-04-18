@@ -185,11 +185,13 @@ async def do_start_ride(gear_system, physics_engine, profile, strava_service, co
         step_grade=config.gear.step_grade,
         debounce_ms=config.gear.debounce_ms,
         smoothing=config.gear.smoothing,
+        min_difficulty_scale=config.gear.min_difficulty_scale,
+        downhill_scale=config.gear.downhill_scale,
     )
     physics_engine.reset()
     reset_ride_data()
     state["gear"] = gear_system.get_display_gear()
-    state["gear_offset"] = round(gear_system.get_target_offset(), 2)
+    state["gear_offset"] = 0.0
 
     if points:
         state["elevation"] = points[0]["elevation"]
@@ -246,7 +248,7 @@ async def do_start_ride(gear_system, physics_engine, profile, strava_service, co
         ride_data["max_power"] = max(ride_data["max_power"], state["power"])
         record_track_sample(points, state["distance"], state["elapsed"])
 
-        gear_offset = gear_system.get_resistance_offset()
+        gear_offset = gear_system.get_resistance_offset(smoothed_slope)
         state["gear"] = gear_system.get_display_gear()
         state["gear_offset"] = round(gear_offset, 2)
         state["effective_slope"] = round(max(-40.0, min(40.0, smoothed_slope + gear_offset)), 2)

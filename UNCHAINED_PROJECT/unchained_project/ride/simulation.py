@@ -88,7 +88,7 @@ async def run_simulation_mock(state, slopes, points, mock_trainer, gear_system=N
 
         gear_offset = 0.0
         if gear_system:
-            gear_offset = gear_system.get_resistance_offset()
+            gear_offset = gear_system.get_resistance_offset(state.current_slope)
             state.gear = gear_system.get_gear()
             state.gear_offset = round(gear_offset, 1)
 
@@ -135,7 +135,7 @@ async def run_simulation_ble(state, slopes, points, ble_client, data_callback, g
 
         gear_offset = 0.0
         if gear_system:
-            gear_offset = gear_system.get_resistance_offset()
+            gear_offset = gear_system.get_resistance_offset(state.current_slope)
             state.gear = gear_system.get_gear()
             state.gear_offset = round(gear_offset, 1)
 
