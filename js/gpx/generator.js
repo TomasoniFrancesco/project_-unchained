@@ -13,6 +13,43 @@ const DIFFICULTY = {
     hard:   { variance: 1.0, smoothPasses: 1, sustainedLen: 0.25 },
 };
 
+const EARTH_RADIUS_M = 6371000;
+
+function haversineDistance(lat1, lon1, lat2, lon2) {
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) ** 2 +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLon / 2) ** 2;
+    return EARTH_RADIUS_M * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function destinationPoint(latDeg, lonDeg, distanceM, bearingDeg) {
+    const lat1 = latDeg * Math.PI / 180;
+    const lon1 = lonDeg * Math.PI / 180;
+    const bearing = bearingDeg * Math.PI / 180;
+    const angularDistance = distanceM / EARTH_RADIUS_M;
+
+    const sinLat1 = Math.sin(lat1);
+    const cosLat1 = Math.cos(lat1);
+    const sinAngularDistance = Math.sin(angularDistance);
+    const cosAngularDistance = Math.cos(angularDistance);
+
+    const lat2 = Math.asin(
+        sinLat1 * cosAngularDistance
+        + cosLat1 * sinAngularDistance * Math.cos(bearing)
+    );
+    const lon2 = lon1 + Math.atan2(
+        Math.sin(bearing) * sinAngularDistance * cosLat1,
+        cosAngularDistance - sinLat1 * Math.sin(lat2)
+    );
+
+    return {
+        lat: lat2 * 180 / Math.PI,
+        lon: ((lon2 * 180 / Math.PI) + 540) % 360 - 180,
+    };
+}
+
 /**
  * Smooth an elevation array using a moving-average filter.
  */
@@ -267,24 +304,28 @@ export function generateRoute(params) {
         }
     }
 
-    // 8. Generate coordinates (straight line from lat=46.5, lon=10.5)
+    // 8. Generate coordinates using spherical geometry so parsed distance
+    // stays aligned with the requested route length.
     const startLat = 46.5;
     const startLon = 10.5;
-    const lonIncrement = (total_distance_km * 0.01) / numPoints;
 
     const points = [];
     const distances = [];
     const startTime = new Date('2024-01-01T08:00:00Z');
 
     for (let i = 0; i < numPoints; i++) {
-        const lat = startLat;
-        const lon = startLon + i * lonIncrement;
+        const dist = i * segLen;
+        const { lat, lon } = destinationPoint(startLat, startLon, dist, 90);
         const ele = Math.max(0, elevations[i]);
         const time = new Date(startTime.getTime() + i * 10000); // +10s per point
-        const dist = i * segLen;
 
         points.push({ lat, lon, ele, time });
         distances.push(dist);
+    }
+
+    let actualDistanceM = 0;
+    for (let i = 1; i < points.length; i++) {
+        actualDistanceM += haversineDistance(points[i - 1].lat, points[i - 1].lon, points[i].lat, points[i].lon);
     }
 
     // 9. Validation
@@ -299,12 +340,21 @@ export function generateRoute(params) {
         if (elevations[i] < 0) hasNegativeEle = true;
     }
 
-    const gainError = Math.abs(actualGain - elevation_gain_m) / elevation_gain_m;
+    const gainError = elevation_gain_m > 0
+        ? Math.abs(actualGain - elevation_gain_m) / elevation_gain_m
+        : (actualGain <= 0.5 ? 0 : 1);
+    const distanceError = Math.abs(actualDistanceM - totalDistanceM) / Math.max(totalDistanceM, 1);
     const validation = {
-        valid: gainError <= 0.05 && maxGrad <= max_gradient_percent + 0.5 && !hasNegativeEle,
+        valid: gainError <= 0.05
+            && distanceError <= 0.01
+            && maxGrad <= max_gradient_percent + 0.5
+            && !hasNegativeEle,
         actualGain: Math.round(actualGain),
         targetGain: elevation_gain_m,
         gainErrorPct: Math.round(gainError * 100),
+        actualDistanceKm: Math.round((actualDistanceM / 1000) * 100) / 100,
+        targetDistanceKm: Math.round(total_distance_km * 100) / 100,
+        distanceErrorPct: Math.round(distanceError * 1000) / 10,
         maxGradient: Math.round(maxGrad * 10) / 10,
         hasNegativeEle,
     };
