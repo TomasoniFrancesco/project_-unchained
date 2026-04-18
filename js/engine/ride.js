@@ -30,6 +30,7 @@ let pausedDurationTotal = 0;
 let pausedElapsedSnapshot = 0;
 let rideStartedAt = null;
 let rideFinalized = false;
+let startupResistanceRampS = 0;
 
 // Data accumulators
 let rideData = null;
@@ -99,6 +100,14 @@ function recordTrackSample(distanceM, elapsedS) {
     });
 }
 
+function applyStartupResistanceRamp(targetSlope, elapsedS) {
+    if (startupResistanceRampS <= 0) return targetSlope;
+
+    const progress = Math.max(0, Math.min(elapsedS / startupResistanceRampS, 1));
+    const easedProgress = progress * progress;
+    return targetSlope * easedProgress;
+}
+
 /**
  * Start a ride on the given route.
  * @param {Object} route - Route object from storage (must have .points)
@@ -134,6 +143,7 @@ export function startRide(route) {
 
     rideData = newRideData();
     rideFinalized = false;
+    startupResistanceRampS = Math.max(0, Number(config.gear.startup_resistance_ramp_s || 0));
 
     // Reset state
     state.update({
@@ -233,8 +243,9 @@ function rideLoop() {
     recordTrackSample(distance, elapsed);
 
     // Gear offset
-    const gearOffset = gears.getResistanceOffset(smoothedSlope);
-    const effectiveSlope = Math.round(Math.max(-40, Math.min(40, smoothedSlope + gearOffset)) * 100) / 100;
+    const targetEffectiveSlope = Math.max(-40, Math.min(40, smoothedSlope + gears.getResistanceOffset(smoothedSlope)));
+    const effectiveSlope = Math.round(Math.max(-40, Math.min(40, applyStartupResistanceRamp(targetEffectiveSlope, elapsed))) * 100) / 100;
+    const gearOffset = effectiveSlope - smoothedSlope;
 
     // Calories
     let calories = 0;

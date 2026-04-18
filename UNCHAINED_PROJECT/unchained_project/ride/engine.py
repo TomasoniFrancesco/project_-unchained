@@ -60,6 +60,15 @@ def record_track_sample(points, distance_m, elapsed_s):
     })
 
 
+def apply_startup_resistance_ramp(target_slope: float, elapsed_s: float, ramp_s: float) -> float:
+    if ramp_s <= 0:
+        return target_slope
+
+    progress = max(0.0, min(elapsed_s / ramp_s, 1.0))
+    eased_progress = progress * progress
+    return target_slope * eased_progress
+
+
 def build_ride_activity_payload():
     """Compute the serializable ride payload."""
     samples = ride_data["power_samples"]
@@ -248,10 +257,17 @@ async def do_start_ride(gear_system, physics_engine, profile, strava_service, co
         ride_data["max_power"] = max(ride_data["max_power"], state["power"])
         record_track_sample(points, state["distance"], state["elapsed"])
 
-        gear_offset = gear_system.get_resistance_offset(smoothed_slope)
+        target_effective_slope = max(-40.0, min(40.0, smoothed_slope + gear_system.get_resistance_offset(smoothed_slope)))
+        state["effective_slope"] = round(
+            max(-40.0, min(40.0, apply_startup_resistance_ramp(
+                target_effective_slope,
+                state["elapsed"],
+                config.gear.startup_resistance_ramp_s,
+            ))),
+            2,
+        )
         state["gear"] = gear_system.get_display_gear()
-        state["gear_offset"] = round(gear_offset, 2)
-        state["effective_slope"] = round(max(-40.0, min(40.0, smoothed_slope + gear_offset)), 2)
+        state["gear_offset"] = round(state["effective_slope"] - smoothed_slope, 2)
 
         trainer_client = get_trainer_client()
         if trainer_client and trainer_client.is_connected:

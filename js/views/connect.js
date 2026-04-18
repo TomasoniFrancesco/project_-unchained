@@ -20,6 +20,7 @@ import { state } from '../state.js';
 
 const ACTIONS = ['gearUp', 'gearDown', 'pause'];
 let stateListener = null;
+let batchListener = null;
 
 export function mount(container) {
     container.innerHTML = `
@@ -52,6 +53,7 @@ export function mount(container) {
         .uuid-remove:hover { color: #EF4444; }
         .uuid-hint { font-size: 0.6rem; color: var(--text-muted); margin-top: 0.4rem; line-height: 1.4; }
         .slots-info { font-size: 0.62rem; color: var(--text-muted); margin-top: 0.35rem; text-align: center; }
+        .scan-helper { font-size: 0.64rem; color: var(--text-muted); margin-top: 0.45rem; line-height: 1.45; text-align: center; }
         #mapPanel { width: 100%; max-width: 640px; margin-top: 1rem; display: none; }
         .map-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.8rem; }
         .map-title { font-size: 0.78rem; font-weight: 700; color: var(--text); }
@@ -73,6 +75,8 @@ export function mount(container) {
         .map-btn.learning-btn { border-color: var(--primary); color: var(--primary); background: var(--primary-dim); }
         .disconnect-btn { font-size: 0.58rem; font-weight: 600; font-family: inherit; padding: 0.2rem 0.6rem; border-radius: var(--radius-sm); border: 1px solid rgba(239,68,68,0.3); background: transparent; color: var(--text-muted); cursor: pointer; transition: all 0.15s; flex-shrink: 0; }
         .disconnect-btn:hover { color: #EF4444; border-color: rgba(239,68,68,0.6); background: rgba(239,68,68,0.08); }
+        .device-submeta { font-size: 0.6rem; color: var(--text-muted); margin-top: 0.18rem; }
+        .device-warning { color: #F59E0B; }
     </style>
     <div class="page connect-page">
         <div class="brand-header">
@@ -101,14 +105,15 @@ export function mount(container) {
             <div class="scan-btn-row">
                 <button class="scan-btn" id="scanCtrlBtn">
                     <div class="scan-spinner" id="scanCtrlSpinner"></div>
-                    <span id="scanCtrlLabel">Scan Known Controllers</span>
+                    <span id="scanCtrlLabel">Add Controller</span>
                 </button>
                 <button class="scan-btn scan-btn-secondary" id="scanCtrlAllBtn">
                     <div class="scan-spinner" id="scanCtrlAllSpinner"></div>
-                    <span id="scanCtrlAllLabel">Scan All Devices</span>
+                    <span id="scanCtrlAllLabel">Can't find it? Scan all devices</span>
                 </button>
             </div>
             <div class="slots-info" id="slotsInfo">2 slots available</div>
+            <div class="scan-helper">Use <strong>Add Controller</strong> for the normal flow. Use <strong>Scan all devices</strong> only if your remote does not appear in the Bluetooth picker.</div>
         </div>
 
         <div class="custom-uuid-section stagger-3">
@@ -172,7 +177,17 @@ export function mount(container) {
         const result = await scanAndConnectController(mode);
         btn.classList.remove('scanning'); spinner.style.display = 'none'; label.textContent = origText;
         updateConnectedUI(); updateSlotsInfo();
-        if (result) { $('#mapPanel').style.display = 'block'; refreshMapUI(); }
+        if (result?.duplicateOf !== undefined) {
+            alert(`That remote is already connected in Slot ${result.duplicateOf + 1}. Choose the other Bluetooth entry so the two controllers stay separate.`);
+            return;
+        }
+        if (result) {
+            $('#mapPanel').style.display = 'block';
+            refreshMapUI();
+            if (result.inputReady === false) {
+                alert('The remote connected, but no button input channel was detected. This usually means the wrong Bluetooth entry was selected, or this device needs "Scan all devices" / a custom service UUID.');
+            }
+        }
     }
     $('#scanCtrlBtn').onclick = () => doControllerScan('filtered');
     $('#scanCtrlAllBtn').onclick = () => doControllerScan('all');
@@ -180,8 +195,10 @@ export function mount(container) {
     // ── Learn mode ──
     ACTIONS.forEach(action => {
         $(`#mapBtn-${action}`).onclick = () => {
-            const c1 = state.get('controller_1_status'), c2 = state.get('controller_2_status');
-            if (c1 !== 'connected' && c2 !== 'connected') { alert('Connect at least one controller first.'); return; }
+            const readyControllers = [0, 1]
+                .map(slot => getControllerInfo(slot))
+                .filter(info => info.connected && info.inputReady);
+            if (!readyControllers.length) { alert('Connect at least one controller with working button input first.'); return; }
             cancelLearnMode();
             ACTIONS.forEach(a => { $(`#mapRow-${a}`).classList.remove('learning'); const b = $(`#mapBtn-${a}`); b.textContent = 'Set'; b.classList.remove('learning-btn'); });
             $(`#mapRow-${action}`).classList.add('learning');
@@ -241,10 +258,16 @@ export function mount(container) {
 
     function updateSlotsInfo() {
         const c1 = state.get('controller_1_status'), c2 = state.get('controller_2_status');
+        const ready = [0, 1].map(slot => getControllerInfo(slot)).filter(info => info.connected && info.inputReady).length;
         let used = 0; if (c1 === 'connected' || c1 === 'connecting') used++; if (c2 === 'connected' || c2 === 'connecting') used++;
         const free = 2 - used; const el = $('#slotsInfo');
-        if (free === 0) { el.textContent = 'Both slots occupied — disconnect one to add another'; el.style.color = 'var(--accent)'; }
-        else { el.textContent = `${free} slot${free > 1 ? 's' : ''} available`; el.style.color = ''; }
+        if (free === 0) {
+            el.textContent = ready === used ? 'Both slots occupied — disconnect one to add another' : `Both slots occupied — ${ready}/${used} controller(s) ready for button input`;
+            el.style.color = 'var(--accent)';
+        } else {
+            el.textContent = ready > 0 ? `${free} slot${free > 1 ? 's' : ''} available • ${ready} controller(s) ready` : `${free} slot${free > 1 ? 's' : ''} available`;
+            el.style.color = '';
+        }
     }
 
     function updateConnectedUI() {
@@ -256,11 +279,18 @@ export function mount(container) {
             rows.push(`<div class="card device-row"><div class="device-dot ${dotClass}"></div><div style="flex:1;min-width:0;"><div class="device-name">${trName || 'Smart Trainer'}</div><div class="device-meta">${statusText}</div></div><span class="type-badge trainer">trainer</span></div>`);
         }
         for (let slot = 0; slot < 2; slot++) {
-            const cStatus = state.get(`controller_${slot+1}_status`), cName = state.get(`controller_${slot+1}_name`);
+            const info = getControllerInfo(slot);
+            const cStatus = info.status;
+            const cName = info.name;
             if (cStatus === 'connected' || cStatus === 'connecting') {
                 const dotClass = cStatus === 'connected' ? 'connected' : 'connecting';
-                const statusText = cStatus === 'connected' ? 'Connected ✓' : 'Connecting…';
-                rows.push(`<div class="card device-row"><div class="device-dot ${dotClass}"></div><div style="flex:1;min-width:0;"><div class="device-name">${cName || 'Controller ' + (slot+1)}</div><div class="device-meta">${statusText} — Slot ${slot+1}</div></div><span class="type-badge controller">controller</span><button class="disconnect-btn" data-slot="${slot}">✕</button></div>`);
+                const statusText = cStatus === 'connected'
+                    ? (info.inputReady ? 'Connected ✓ Input ready' : 'Connected, but buttons not detected')
+                    : 'Connecting…';
+                const shortId = info.id ? info.id.slice(-8).toUpperCase() : '';
+                const idLine = shortId ? `<div class="device-submeta">Device ID ${shortId} • Slot ${slot + 1}</div>` : `<div class="device-submeta">Slot ${slot + 1}</div>`;
+                const issueLine = info.issue ? `<div class="device-submeta device-warning">${info.issue}</div>` : '';
+                rows.push(`<div class="card device-row"><div class="device-dot ${dotClass}"></div><div style="flex:1;min-width:0;"><div class="device-name">${cName || 'Controller ' + (slot+1)}</div><div class="device-meta">${statusText}</div>${idLine}${issueLine}</div><span class="type-badge controller">controller</span><button class="disconnect-btn" data-slot="${slot}">✕</button></div>`);
             }
         }
         if (state.get('controller_1_status') === 'connected' || state.get('controller_2_status') === 'connected') {
@@ -281,10 +311,13 @@ export function mount(container) {
 
     // State listener
     stateListener = () => { updateConnectedUI(); updateSlotsInfo(); };
+    batchListener = () => { updateConnectedUI(); updateSlotsInfo(); };
     state.addEventListener('change', stateListener);
+    state.addEventListener('batch', batchListener);
 }
 
 export function unmount() {
     if (stateListener) { state.removeEventListener('change', stateListener); stateListener = null; }
+    if (batchListener) { state.removeEventListener('batch', batchListener); batchListener = null; }
     cancelLearnMode();
 }

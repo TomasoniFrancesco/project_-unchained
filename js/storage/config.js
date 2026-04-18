@@ -15,6 +15,7 @@ const DEFAULTS = {
         smoothing: 0.3,
         min_difficulty_scale: 0.15,
         downhill_scale: 0.5,
+        startup_resistance_ramp_s: 12,
     },
     // Physics
     physics: {

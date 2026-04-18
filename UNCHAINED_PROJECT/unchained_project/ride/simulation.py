@@ -54,6 +54,15 @@ def get_elevation_at_distance(points, distance):
     return points[-1]["elevation"]
 
 
+def apply_startup_resistance_ramp(target_slope, elapsed_s, ramp_s=12.0):
+    if ramp_s <= 0:
+        return target_slope
+
+    progress = max(0.0, min(elapsed_s / ramp_s, 1.0))
+    eased_progress = progress * progress
+    return target_slope * eased_progress
+
+
 async def run_simulation_mock(state, slopes, points, mock_trainer, gear_system=None, update_interval=1.0):
     """Run the simulation loop using the mock trainer."""
     from unchained_project.routes.gpx import get_total_distance
@@ -86,13 +95,13 @@ async def run_simulation_mock(state, slopes, points, mock_trainer, gear_system=N
         state.progress_pct = (state.distance_traveled / state.total_distance) * 100.0
         state.elapsed_time = time.time() - start_time
 
-        gear_offset = 0.0
+        target_effective_slope = state.current_slope
         if gear_system:
-            gear_offset = gear_system.get_resistance_offset(state.current_slope)
+            target_effective_slope = state.current_slope + gear_system.get_resistance_offset(state.current_slope)
             state.gear = gear_system.get_gear()
-            state.gear_offset = round(gear_offset, 1)
+        state.effective_slope = max(-40.0, min(40.0, apply_startup_resistance_ramp(target_effective_slope, state.elapsed_time)))
+        state.gear_offset = round(state.effective_slope - state.current_slope, 1)
 
-        state.effective_slope = max(-40.0, min(40.0, state.current_slope + gear_offset))
         mock_trainer.set_slope(state.effective_slope)
 
         await asyncio.sleep(update_interval)
@@ -133,13 +142,13 @@ async def run_simulation_ble(state, slopes, points, ble_client, data_callback, g
         state.progress_pct = (state.distance_traveled / state.total_distance) * 100.0
         state.elapsed_time = time.time() - start_time
 
-        gear_offset = 0.0
+        target_effective_slope = state.current_slope
         if gear_system:
-            gear_offset = gear_system.get_resistance_offset(state.current_slope)
+            target_effective_slope = state.current_slope + gear_system.get_resistance_offset(state.current_slope)
             state.gear = gear_system.get_gear()
-            state.gear_offset = round(gear_offset, 1)
+        state.effective_slope = max(-40.0, min(40.0, apply_startup_resistance_ramp(target_effective_slope, state.elapsed_time)))
+        state.gear_offset = round(state.effective_slope - state.current_slope, 1)
 
-        state.effective_slope = max(-40.0, min(40.0, state.current_slope + gear_offset))
         await set_simulation_params(ble_client, state.effective_slope)
 
         await asyncio.sleep(update_interval)

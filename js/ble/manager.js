@@ -104,8 +104,8 @@ let onTrainerData       = null;
 
 // ── Controllers state (2 slots) ───────────────────────────────────
 const controllers = [
-    { device: null, server: null, name: '', status: 'disconnected', subscriptions: [], writableChannels: [] },
-    { device: null, server: null, name: '', status: 'disconnected', subscriptions: [], writableChannels: [] },
+    { device: null, server: null, id: '', name: '', status: 'disconnected', subscriptions: [], writableChannels: [], inputReady: false, issue: '' },
+    { device: null, server: null, id: '', name: '', status: 'disconnected', subscriptions: [], writableChannels: [], inputReady: false, issue: '' },
 ];
 
 // ── Learn mode ────────────────────────────────────────────────────
@@ -389,10 +389,35 @@ function clearControllerRuntime(slot) {
 
     ctrl.subscriptions = [];
     ctrl.writableChannels = [];
+    ctrl.inputReady = false;
 
     for (const key of Array.from(reportStates.keys())) {
         if (key.startsWith(`${slot}|`)) reportStates.delete(key);
     }
+}
+
+function resetControllerSlot(slot) {
+    const ctrl = controllers[slot];
+    clearControllerRuntime(slot);
+    ctrl.server = null;
+    ctrl.device = null;
+    ctrl.id = '';
+    ctrl.name = '';
+    ctrl.status = 'disconnected';
+    ctrl.issue = '';
+    syncControllerState(slot);
+}
+
+function findExistingControllerSlotByDeviceId(deviceId, ignoreSlot = -1) {
+    if (!deviceId) return -1;
+
+    for (let i = 0; i < controllers.length; i++) {
+        if (i === ignoreSlot) continue;
+        const ctrl = controllers[i];
+        if (ctrl.id === deviceId && ctrl.status !== 'disconnected') return i;
+    }
+
+    return -1;
 }
 
 function isLikelyZwiftService(serviceUuid) {
@@ -576,22 +601,26 @@ export async function scanAndConnectController(mode = 'all') {
         }
 
         const device = await navigator.bluetooth.requestDevice(requestOptions);
+        const existingSlot = findExistingControllerSlotByDeviceId(device.id, slot);
+        if (existingSlot !== -1) {
+            console.warn(`[BLE] Refusing duplicate controller selection for slot ${slot + 1}: already connected in slot ${existingSlot + 1}`);
+            resetControllerSlot(slot);
+            return { device, duplicateOf: existingSlot };
+        }
 
         const ctrl = controllers[slot];
         ctrl.device = device;
+        ctrl.id     = device.id || '';
         ctrl.name   = device.name || `Controller ${n}`;
         ctrl.status = 'connecting';
+        ctrl.issue  = '';
         syncControllerState(slot);
 
         console.log(`[BLE] Controller ${n} selected: ${device.name}`);
 
         device.addEventListener('gattserverdisconnected', () => {
             console.log(`[BLE] Controller ${n} disconnected`);
-            clearControllerRuntime(slot);
-            ctrl.server = null;
-            ctrl.status = 'disconnected';
-            ctrl.name   = '';
-            syncControllerState(slot);
+            resetControllerSlot(slot);
         });
 
         ctrl.server = await device.gatt.connect();
@@ -601,15 +630,17 @@ export async function scanAndConnectController(mode = 'all') {
 
         if (!subscribed) {
             console.warn(`[BLE] Controller ${n}: no notifiable characteristics — buttons won't work.`);
+            ctrl.issue = 'Connected, but no button channel was detected.';
         }
 
+        ctrl.inputReady = subscribed;
         ctrl.status = 'connected';
         syncControllerState(slot);
         console.log(`[BLE] Controller ${n} ready (subscribed: ${subscribed})`);
-        return { device, slot };
+        return { device, slot, inputReady: subscribed, issue: ctrl.issue };
 
     } catch (err) {
-        state.set(`controller_${slot + 1}_status`, 'disconnected');
+        resetControllerSlot(slot);
         if (err.name === 'NotFoundError') {
             console.log('[BLE] Controller scan cancelled');
         } else {
@@ -838,8 +869,11 @@ export function getControllerInfo(slot) {
     const c = controllers[slot];
     return {
         name:      c.name,
+        id:        c.id,
         status:    c.status,
         connected: c.server !== null && c.server.connected,
+        inputReady: !!c.inputReady,
+        issue: c.issue,
     };
 }
 
@@ -853,8 +887,10 @@ export function disconnectController(slot) {
     if (c.server && c.server.connected) c.server.disconnect();
     c.server = null;
     c.device = null;
+    c.id     = '';
     c.name   = '';
     c.status = 'disconnected';
+    c.issue  = '';
     syncControllerState(slot);
 }
 

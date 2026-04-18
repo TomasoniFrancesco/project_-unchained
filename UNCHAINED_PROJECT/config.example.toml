@@ -43,6 +43,8 @@ smoothing = 0.3
 min_difficulty_scale = 0.15
 # Downhill feel multiplier to avoid excessive spin-out
 downhill_scale = 0.5
+# Seconds to ramp trainer resistance from flat at ride start
+startup_resistance_ramp_s = 12.0
 
 [physics]
 # Default rider + bike mass in kg (overridden by profile weight if set)
