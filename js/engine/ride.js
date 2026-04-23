@@ -342,8 +342,17 @@ export function togglePause() {
 /**
  * Shift gear up/down.
  */
-export function gearUp() { if (gears) gears.shiftUp(); }
-export function gearDown() { if (gears) gears.shiftDown(); }
+export function gearUp() {
+    if (!gears) return;
+    gears.shiftUp();
+    // Force immediate FTMS write so the rider feels the change now
+    if (typeof bleManager.forceNextSimWrite === 'function') bleManager.forceNextSimWrite();
+}
+export function gearDown() {
+    if (!gears) return;
+    gears.shiftDown();
+    if (typeof bleManager.forceNextSimWrite === 'function') bleManager.forceNextSimWrite();
+}
 
 /**
  * Finalize and save the ride.

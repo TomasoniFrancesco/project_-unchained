@@ -317,13 +317,47 @@ export async function scanAndConnectTrainer(dataCallback) {
     }
 }
 
+let _lastSentGrade = null;
+let _simWriteInProgress = false;
+let _lastSimWriteTime = 0;
+const SIM_WRITE_MIN_INTERVAL_MS = 500; // max 2 Hz FTMS writes
+
 export async function sendSimulationParams(grade) {
     if (!trainerControlPoint) return;
+
+    // Round to 0.01% to avoid micro-jitter writes
+    const roundedGrade = Math.round(grade * 100) / 100;
+
+    // Skip if grade hasn't changed
+    if (roundedGrade === _lastSentGrade) return;
+
+    // Throttle: don't write faster than 2 Hz
+    const now = performance.now();
+    if ((now - _lastSimWriteTime) < SIM_WRITE_MIN_INTERVAL_MS) return;
+
+    // Prevent concurrent GATT writes
+    if (_simWriteInProgress) return;
+
+    _simWriteInProgress = true;
+    _lastSimWriteTime = now;
+
     try {
-        await setSimulationParams(trainerControlPoint, grade);
+        await setSimulationParams(trainerControlPoint, roundedGrade);
+        _lastSentGrade = roundedGrade;
     } catch (err) {
         console.warn('[BLE] Failed to send simulation params:', err.message);
+    } finally {
+        _simWriteInProgress = false;
     }
+}
+
+/**
+ * Reset the throttle so the next sendSimulationParams call writes immediately.
+ * Call this on gear shift so the rider feels instant feedback.
+ */
+export function forceNextSimWrite() {
+    _lastSentGrade = null;
+    _lastSimWriteTime = 0;
 }
 
 export async function releaseTrainerResistance() {
