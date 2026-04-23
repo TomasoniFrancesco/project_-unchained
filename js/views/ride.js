@@ -22,9 +22,8 @@ export function mount(container) {
     // Ride-specific full-screen CSS
     container.innerHTML = `
     <style>
-        #rideRoot { position:fixed; inset:0; z-index:50; background:var(--bg); }
-        .ride-bg { position:absolute; inset:0; z-index:0; background: linear-gradient(180deg, #0B1220 0%, #0f1a2e 25%, #162a44 50%, #1a3a28 75%, #0d1a10 100%); }
-        .ride-bg::before { content:''; position:absolute; inset:0; background: radial-gradient(ellipse 120% 50% at 50% 65%, rgba(14,165,233,0.06) 0%, transparent 60%), radial-gradient(ellipse 80% 30% at 30% 75%, rgba(249,115,22,0.04) 0%, transparent 50%); }
+        #rideRoot { position:fixed; inset:0; z-index:50; background:#0B1220; }
+        #sceneCanvas { position:absolute; inset:0; width:100%; height:100%; display:block; z-index:0; }
         .hud { position:absolute; inset:0; z-index:10; pointer-events:none; }
         .hud > * { pointer-events:auto; }
         .pill { background:var(--glass-bg); backdrop-filter:blur(var(--glass-blur)); -webkit-backdrop-filter:blur(var(--glass-blur)); border:1px solid var(--glass-border); border-radius:16px; }
@@ -103,7 +102,7 @@ export function mount(container) {
         .power-trend.up { color:#EF4444; } .power-trend.down { color:var(--primary); }
     </style>
     <div id="rideRoot">
-        <div class="ride-bg"></div>
+        <canvas id="sceneCanvas"></canvas>
         <div class="hud">
             <div class="top-bar">
                 <div class="top-left">
@@ -205,9 +204,10 @@ export function mount(container) {
         return { ctx, w: rect.width, h: rect.height };
     }
     function clamp(v,min,max) { return Math.max(min,Math.min(max,v)); }
+    function lerp(a,b,t) { return a+(b-a)*t; }
 
     function getElevAtDist(dist) {
-        if (!routePoints.length) return 0;
+        if (!routePoints.length) return 200;
         if (routePoints.length === 1) return routePoints[0].ele;
         const d = clamp(dist, 0, elevBounds.maxDist);
         for (let i = 1; i < routePoints.length; i++) {
@@ -221,6 +221,166 @@ export function mount(container) {
         return routePoints[routePoints.length-1].ele;
     }
 
+    function getSlopeAtDist(dist) {
+        const d0 = Math.max(0, dist - 5), d1 = Math.min(elevBounds.maxDist, dist + 5);
+        const e0 = getElevAtDist(d0), e1 = getElevAtDist(d1);
+        const dx = d1 - d0; return dx > 0 ? (e1 - e0) / dx : 0;
+    }
+
+    // ── Procedural stars (generated once) ──
+    const stars = Array.from({length:120}, () => ({x:Math.random(),y:Math.random()*0.45,r:Math.random()*1.2+0.3,b:Math.random()*0.5+0.5}));
+
+    // ── Seeded noise for mountains ──
+    function pseudoNoise(x, seed) {
+        const s = Math.sin(x * 127.1 + seed * 311.7) * 43758.5453;
+        return s - Math.floor(s);
+    }
+    function mountainProfile(x, seed, octaves) {
+        let v = 0, amp = 1, freq = 1, total = 0;
+        for (let i = 0; i < octaves; i++) {
+            v += pseudoNoise(x * freq, seed + i * 13.37) * amp;
+            total += amp; amp *= 0.5; freq *= 2.1;
+        }
+        return v / total;
+    }
+
+    // ── 3D Scene Renderer ──
+    function drawScene(currentDist) {
+        const canvas = $('#sceneCanvas'); const { ctx, w, h } = setupCanvas(canvas);
+        ctx.clearRect(0, 0, w, h);
+        const horizonY = h * 0.42;
+        const curElev = getElevAtDist(currentDist);
+        const curSlope = getSlopeAtDist(currentDist);
+        const progress = elevBounds.maxDist > 0 ? currentDist / elevBounds.maxDist : 0;
+
+        // ── Sky gradient ──
+        const skyGrad = ctx.createLinearGradient(0, 0, 0, horizonY);
+        skyGrad.addColorStop(0, '#050a18'); skyGrad.addColorStop(0.3, '#0a1428');
+        skyGrad.addColorStop(0.6, '#0f1f3a'); skyGrad.addColorStop(1, '#1a3358');
+        ctx.fillStyle = skyGrad; ctx.fillRect(0, 0, w, horizonY + 2);
+
+        // ── Stars ──
+        for (const s of stars) {
+            const flicker = 0.6 + 0.4 * Math.sin(performance.now() * 0.001 * s.b + s.x * 100);
+            ctx.globalAlpha = s.b * flicker * 0.7;
+            ctx.fillStyle = '#fff'; ctx.beginPath();
+            ctx.arc(s.x * w, s.y * h, s.r, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+
+        // ── Moon glow ──
+        const moonX = w * 0.78, moonY = h * 0.12;
+        const moonGlow = ctx.createRadialGradient(moonX, moonY, 0, moonX, moonY, 80);
+        moonGlow.addColorStop(0, 'rgba(200,220,255,0.15)'); moonGlow.addColorStop(1, 'transparent');
+        ctx.fillStyle = moonGlow; ctx.fillRect(moonX - 80, moonY - 80, 160, 160);
+        ctx.fillStyle = 'rgba(220,230,255,0.8)'; ctx.beginPath();
+        ctx.arc(moonX, moonY, 8, 0, Math.PI * 2); ctx.fill();
+
+        // ── Mountain layers (parallax driven by distance) ──
+        const scroll = currentDist * 0.0002;
+        const mtnLayers = [
+            { seed: 7, scale: 0.5, height: 0.38, baseY: horizonY, color: 'rgba(15,25,50,0.7)', speed: 0.15, octaves: 4 },
+            { seed: 23, scale: 0.8, height: 0.28, baseY: horizonY, color: 'rgba(18,32,55,0.75)', speed: 0.3, octaves: 3 },
+            { seed: 42, scale: 1.2, height: 0.20, baseY: horizonY, color: 'rgba(12,22,38,0.85)', speed: 0.5, octaves: 3 },
+        ];
+        for (const layer of mtnLayers) {
+            ctx.beginPath(); ctx.moveTo(0, layer.baseY);
+            const step = 4;
+            for (let px = 0; px <= w; px += step) {
+                const nx = (px / w) * layer.scale + scroll * layer.speed;
+                const mh = mountainProfile(nx, layer.seed, layer.octaves);
+                const eleInfluence = mapReady ? (getElevAtDist(clamp(currentDist + (px/w - 0.5) * 2000 * layer.speed, 0, elevBounds.maxDist)) - elevBounds.minEle) / Math.max(elevBounds.maxEle - elevBounds.minEle, 1) : 0.5;
+                const peakH = layer.height * (0.6 + eleInfluence * 0.6);
+                ctx.lineTo(px, layer.baseY - mh * peakH * horizonY);
+            }
+            ctx.lineTo(w, layer.baseY); ctx.closePath(); ctx.fillStyle = layer.color; ctx.fill();
+        }
+
+        // ── Horizon atmosphere glow ──
+        const hGlow = ctx.createLinearGradient(0, horizonY - 30, 0, horizonY + 20);
+        hGlow.addColorStop(0, 'transparent'); hGlow.addColorStop(0.5, 'rgba(14,165,233,0.06)');
+        hGlow.addColorStop(1, 'transparent');
+        ctx.fillStyle = hGlow; ctx.fillRect(0, horizonY - 30, w, 50);
+
+        // ── Ground plane ──
+        const gndGrad = ctx.createLinearGradient(0, horizonY, 0, h);
+        const baseGreen = curSlope > 0.03 ? [25, 55, 30] : curSlope < -0.02 ? [20, 45, 35] : [22, 50, 28];
+        gndGrad.addColorStop(0, `rgba(${baseGreen[0]},${baseGreen[1]+10},${baseGreen[2]},1)`);
+        gndGrad.addColorStop(0.3, `rgba(${baseGreen[0]-4},${baseGreen[1]},${baseGreen[2]-5},1)`);
+        gndGrad.addColorStop(1, `rgba(${baseGreen[0]-8},${baseGreen[1]-15},${baseGreen[2]-10},1)`);
+        ctx.fillStyle = gndGrad; ctx.fillRect(0, horizonY, w, h - horizonY);
+
+        // ── Ground texture stripes (perspective speed lines) ──
+        const stripeCount = 14;
+        for (let i = 0; i < stripeCount; i++) {
+            const phase = ((currentDist * 0.04 + i * (1 / stripeCount)) % 1);
+            const t = phase;
+            const y = horizonY + Math.pow(t, 1.8) * (h - horizonY);
+            const alpha = t * 0.12;
+            ctx.strokeStyle = `rgba(255,255,255,${alpha})`; ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+        }
+
+        // ── Road with perspective ──
+        const vanishX = w * 0.5, vanishY = horizonY;
+        const roadBottom = h * 0.92;
+        const roadSegments = 40;
+        const leftEdge = [], rightEdge = [], centerLine = [];
+        for (let i = 0; i <= roadSegments; i++) {
+            const t = i / roadSegments;
+            const y = vanishY + Math.pow(t, 1.5) * (roadBottom - vanishY);
+            const roadHalfW = lerp(2, w * 0.18, Math.pow(t, 1.2));
+            const sway = Math.sin(currentDist * 0.003 + t * 3) * roadHalfW * 0.15 * (1 - t * 0.5);
+            const cx = vanishX + sway;
+            leftEdge.push({ x: cx - roadHalfW, y });
+            rightEdge.push({ x: cx + roadHalfW, y });
+            centerLine.push({ x: cx, y });
+        }
+
+        // Road surface
+        ctx.beginPath(); ctx.moveTo(leftEdge[0].x, leftEdge[0].y);
+        for (const p of leftEdge) ctx.lineTo(p.x, p.y);
+        for (let i = rightEdge.length - 1; i >= 0; i--) ctx.lineTo(rightEdge[i].x, rightEdge[i].y);
+        ctx.closePath();
+        const roadGrad = ctx.createLinearGradient(0, vanishY, 0, roadBottom);
+        roadGrad.addColorStop(0, '#2a2a2a'); roadGrad.addColorStop(0.5, '#333'); roadGrad.addColorStop(1, '#282828');
+        ctx.fillStyle = roadGrad; ctx.fill();
+
+        // Road edge lines
+        ctx.strokeStyle = 'rgba(255,255,255,0.18)'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); for (let i = 0; i < leftEdge.length; i++) { if (i === 0) ctx.moveTo(leftEdge[i].x, leftEdge[i].y); else ctx.lineTo(leftEdge[i].x, leftEdge[i].y); } ctx.stroke();
+        ctx.beginPath(); for (let i = 0; i < rightEdge.length; i++) { if (i === 0) ctx.moveTo(rightEdge[i].x, rightEdge[i].y); else ctx.lineTo(rightEdge[i].x, rightEdge[i].y); } ctx.stroke();
+
+        // Dashed center line
+        ctx.setLineDash([10, 16]); ctx.lineDashOffset = -(currentDist * 0.8) % 26;
+        ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 2;
+        ctx.beginPath(); for (let i = 0; i < centerLine.length; i++) { if (i === 0) ctx.moveTo(centerLine[i].x, centerLine[i].y); else ctx.lineTo(centerLine[i].x, centerLine[i].y); } ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Orange center glow line
+        ctx.strokeStyle = 'rgba(249,115,22,0.2)'; ctx.lineWidth = 3;
+        ctx.beginPath(); for (let i = 0; i < centerLine.length; i++) { if (i === 0) ctx.moveTo(centerLine[i].x, centerLine[i].y); else ctx.lineTo(centerLine[i].x, centerLine[i].y); } ctx.stroke();
+
+        // ── Rider marker ──
+        const riderX = vanishX, riderY = roadBottom - 12;
+        ctx.save(); ctx.shadowColor = 'rgba(249,115,22,0.6)'; ctx.shadowBlur = 18;
+        ctx.fillStyle = '#F97316'; ctx.beginPath(); ctx.arc(riderX, riderY, 6, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+        // Bike frame
+        ctx.strokeStyle = '#34D399'; ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(riderX, riderY - 14); ctx.lineTo(riderX - 5, riderY + 2);
+        ctx.moveTo(riderX, riderY - 14); ctx.lineTo(riderX + 5, riderY + 2);
+        ctx.moveTo(riderX - 7, riderY - 7); ctx.lineTo(riderX + 7, riderY - 7);
+        ctx.stroke();
+
+        // ── Fog near horizon ──
+        const fogGrad = ctx.createLinearGradient(0, horizonY - 10, 0, horizonY + 60);
+        fogGrad.addColorStop(0, 'rgba(15,25,45,0.4)'); fogGrad.addColorStop(1, 'transparent');
+        ctx.fillStyle = fogGrad; ctx.fillRect(0, horizonY - 10, w, 70);
+    }
+
+    // ── Elevation strip ──
     function drawElevation(currentDist) {
         const canvas=$('#elevCanvas'); const{ctx,w,h}=setupCanvas(canvas); ctx.clearRect(0,0,w,h);
         if(!mapReady||routePoints.length<2)return;
@@ -255,6 +415,7 @@ export function mount(container) {
     function frame() {
         renderDistance += (targetDistance - renderDistance) * 0.15;
         if (Math.abs(targetDistance - renderDistance) < 0.02) renderDistance = targetDistance;
+        drawScene(renderDistance);
         drawElevation(renderDistance);
         animFrameId = requestAnimationFrame(frame);
     }
@@ -359,7 +520,7 @@ export function mount(container) {
     };
     document.addEventListener('keydown', keyListener);
 
-    resizeListener = () => { drawElevation(renderDistance); };
+    resizeListener = () => { drawScene(renderDistance); drawElevation(renderDistance); };
     window.addEventListener('resize', resizeListener);
 }
 
