@@ -23,7 +23,8 @@ export function mount(container) {
     container.innerHTML = `
     <style>
         #rideRoot { position:fixed; inset:0; z-index:50; background:var(--bg); }
-        #roadCanvas { position:absolute; inset:0; width:100%; height:100%; display:block; z-index:0; }
+        .ride-bg { position:absolute; inset:0; z-index:0; background: linear-gradient(180deg, #0B1220 0%, #0f1a2e 25%, #162a44 50%, #1a3a28 75%, #0d1a10 100%); }
+        .ride-bg::before { content:''; position:absolute; inset:0; background: radial-gradient(ellipse 120% 50% at 50% 65%, rgba(14,165,233,0.06) 0%, transparent 60%), radial-gradient(ellipse 80% 30% at 30% 75%, rgba(249,115,22,0.04) 0%, transparent 50%); }
         .hud { position:absolute; inset:0; z-index:10; pointer-events:none; }
         .hud > * { pointer-events:auto; }
         .pill { background:var(--glass-bg); backdrop-filter:blur(var(--glass-blur)); -webkit-backdrop-filter:blur(var(--glass-blur)); border:1px solid var(--glass-border); border-radius:16px; }
@@ -74,7 +75,7 @@ export function mount(container) {
         .gear-arrows { display:flex; gap:6px; }
         .gear-arrow { width:36px; height:36px; border-radius:10px; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.12); color:rgba(255,255,255,0.6); font-size:1.1rem; display:flex; align-items:center; justify-content:center; cursor:pointer; font-family:inherit; transition:all 0.15s; }
         .gear-arrow:hover { background:rgba(255,255,255,0.15); color:#fff; }
-        .elev-strip { height:60px; background:rgba(11,18,32,0.65); backdrop-filter:blur(10px); border-top:1px solid var(--glass-border); position:relative; }
+        .elev-strip { height:120px; background:rgba(11,18,32,0.75); backdrop-filter:blur(14px); border-top:1px solid var(--glass-border); position:relative; }
         #elevCanvas { width:100%; height:100%; display:block; }
         .progress-strip { height:4px; background:rgba(255,255,255,0.06); }
         .progress-fill { height:100%; width:0%; background:linear-gradient(90deg,var(--primary),var(--secondary)); transition:width 0.8s ease; }
@@ -102,7 +103,7 @@ export function mount(container) {
         .power-trend.up { color:#EF4444; } .power-trend.down { color:var(--primary); }
     </style>
     <div id="rideRoot">
-        <canvas id="roadCanvas"></canvas>
+        <div class="ride-bg"></div>
         <div class="hud">
             <div class="top-bar">
                 <div class="top-left">
@@ -179,7 +180,7 @@ export function mount(container) {
 
     // ── Route / Canvas data ──
     let routePoints = route.points || [];
-    let routeMeters = [], totalDistance = 0, mapReady = false;
+    let totalDistance = 0, mapReady = false;
     const elevBounds = { minEle: 0, maxEle: 0, maxDist: 1 };
     const powerHistory = [], TREND_WINDOW = 10;
     let sessionPowerSum = 0, sessionPowerCount = 0;
@@ -187,18 +188,12 @@ export function mount(container) {
 
     if (routePoints.length > 1) {
         totalDistance = routePoints[routePoints.length - 1].distance_from_start || 0;
-        routePoints = routePoints.map(p => ({ lat: p.lat, lon: p.lon, ele: p.elevation, dist: p.distance_from_start }));
-        computeRouteMeta(); mapReady = true;
-    }
-
-    function computeRouteMeta() {
+        routePoints = routePoints.map(p => ({ ele: p.elevation, dist: p.distance_from_start }));
         const eles = routePoints.map(p => p.ele);
-        elevBounds.minEle = Math.min(...eles) - 10; elevBounds.maxEle = Math.max(...eles) + 10;
+        elevBounds.minEle = Math.min(...eles) - 10;
+        elevBounds.maxEle = Math.max(...eles) + 10;
         elevBounds.maxDist = Math.max(totalDistance || routePoints[routePoints.length-1].dist || 1, 1);
-        routeMeters = routePoints.map(p => {
-            const latRad = p.lat * Math.PI / 180;
-            return { x: p.lon * 111320 * Math.cos(latRad), y: p.lat * 111320, ele: p.ele, dist: p.dist };
-        });
+        mapReady = true;
     }
 
     function setupCanvas(canvas) {
@@ -209,123 +204,58 @@ export function mount(container) {
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         return { ctx, w: rect.width, h: rect.height };
     }
-    function lerp(a,b,t) { return a+(b-a)*t; }
     function clamp(v,min,max) { return Math.max(min,Math.min(max,v)); }
 
-    function getSegmentIndex(dist) {
+    function getElevAtDist(dist) {
         if (!routePoints.length) return 0;
-        for (let i=1;i<routePoints.length;i++) { if (routePoints[i].dist>=dist) return i-1; }
-        return routePoints.length-2;
-    }
-    function interpolateSample(dist) {
-        if (!routePoints.length) return {x:0,y:0,ele:0,dist:0};
-        if (routePoints.length===1) return routeMeters[0];
-        const d=clamp(dist,0,elevBounds.maxDist); const idx=getSegmentIndex(d);
-        const a=routeMeters[idx], b=routeMeters[Math.min(idx+1,routeMeters.length-1)];
-        const seg=Math.max(1e-6,b.dist-a.dist); const t=clamp((d-a.dist)/seg,0,1);
-        return {x:lerp(a.x,b.x,t),y:lerp(a.y,b.y,t),ele:lerp(a.ele,b.ele,t),dist:d};
-    }
-    function headingAt(dist) {
-        const a=interpolateSample(dist), b=interpolateSample(Math.min(dist+8,elevBounds.maxDist));
-        let dx=b.x-a.x, dy=b.y-a.y; const len=Math.hypot(dx,dy)||1;
-        return {dx:dx/len,dy:dy/len};
-    }
-
-    function drawMountains(ctx,w,skyH) {
-        ctx.beginPath();ctx.moveTo(0,skyH);
-        const fp=[0.08,0.15,0.22,0.30,0.38,0.45,0.52,0.60,0.68,0.75,0.82,0.90,1.0];
-        const fh=[0.65,0.45,0.55,0.35,0.60,0.42,0.58,0.38,0.52,0.40,0.55,0.48,0.60];
-        for(let i=0;i<fp.length;i++)ctx.lineTo(w*fp[i],skyH-skyH*fh[i]*0.35);
-        ctx.lineTo(w,skyH);ctx.closePath();ctx.fillStyle='rgba(20,35,60,0.30)';ctx.fill();
-        ctx.beginPath();ctx.moveTo(0,skyH);
-        const mp=[0.05,0.12,0.20,0.28,0.36,0.44,0.52,0.62,0.72,0.80,0.88,0.95,1.0];
-        const mh=[0.30,0.50,0.35,0.55,0.32,0.48,0.40,0.52,0.35,0.45,0.38,0.50,0.35];
-        for(let i=0;i<mp.length;i++)ctx.lineTo(w*mp[i],skyH-skyH*mh[i]*0.25);
-        ctx.lineTo(w,skyH);ctx.closePath();ctx.fillStyle='rgba(15,25,45,0.40)';ctx.fill();
-        ctx.beginPath();ctx.moveTo(0,skyH);
-        const np=[0.06,0.14,0.24,0.34,0.44,0.56,0.66,0.76,0.86,0.94,1.0];
-        const nh=[0.12,0.22,0.15,0.25,0.18,0.20,0.14,0.22,0.16,0.20,0.14];
-        for(let i=0;i<np.length;i++)ctx.lineTo(w*np[i],skyH-skyH*nh[i]*0.30);
-        ctx.lineTo(w,skyH);ctx.closePath();ctx.fillStyle='rgba(12,20,35,0.50)';ctx.fill();
-    }
-
-    function drawRoad(currentDist) {
-        const canvas=$('#roadCanvas'); const{ctx,w,h}=setupCanvas(canvas);
-        ctx.clearRect(0,0,w,h);
-        const skyH=h*0.38;
-        const skyGrad=ctx.createLinearGradient(0,0,0,skyH);
-        skyGrad.addColorStop(0,'#0B1220');skyGrad.addColorStop(0.3,'#0f1a2e');skyGrad.addColorStop(0.6,'#162a44');skyGrad.addColorStop(1,'#1e3a5a');
-        ctx.fillStyle=skyGrad;ctx.fillRect(0,0,w,skyH);
-        drawMountains(ctx,w,skyH);
-        const groundGrad=ctx.createLinearGradient(0,skyH,0,h);
-        groundGrad.addColorStop(0,'#1a3020');groundGrad.addColorStop(0.15,'#152818');groundGrad.addColorStop(1,'#0d1a10');
-        ctx.fillStyle=groundGrad;ctx.fillRect(0,skyH,w,h-skyH);
-        if(!mapReady||routePoints.length<2)return;
-        const horizonY=skyH,riderY=h*0.82,centerX=w*0.5;
-        const rider=interpolateSample(currentDist),heading=headingAt(currentDist);
-        const cos=heading.dy,sin=heading.dx;
-        const behind=20,ahead=300,step=3,projected=[];
-        for(let d=-behind;d<=ahead;d+=step){
-            const sample=interpolateSample(currentDist+d);
-            const relX=sample.x-rider.x,relY=sample.y-rider.y;
-            const lateral=relX*cos-relY*sin,forward=relX*sin+relY*cos;
-            if(forward<-behind||forward>ahead+step)continue;
-            const t=clamp((forward+behind)/(ahead+behind),0,1);
-            const y=riderY-Math.pow(t,0.82)*(riderY-horizonY);
-            const xScale=lerp(1.6,0.2,t);
-            projected.push({x:centerX+lateral*xScale*1.8,y,t});
+        if (routePoints.length === 1) return routePoints[0].ele;
+        const d = clamp(dist, 0, elevBounds.maxDist);
+        for (let i = 1; i < routePoints.length; i++) {
+            if (routePoints[i].dist >= d) {
+                const a = routePoints[i-1], b = routePoints[i];
+                const seg = Math.max(1e-6, b.dist - a.dist);
+                const t = clamp((d - a.dist) / seg, 0, 1);
+                return a.ele + (b.ele - a.ele) * t;
+            }
         }
-        if(projected.length<2)return;
-        const leftEdge=[],rightEdge=[];
-        for(const p of projected){const half=lerp(100,10,p.t);leftEdge.push({x:p.x-half,y:p.y});rightEdge.push({x:p.x+half,y:p.y});}
-        ctx.beginPath();ctx.moveTo(leftEdge[0].x,leftEdge[0].y);
-        for(const p of leftEdge)ctx.lineTo(p.x,p.y);
-        for(let i=rightEdge.length-1;i>=0;i--)ctx.lineTo(rightEdge[i].x,rightEdge[i].y);
-        ctx.closePath();
-        const roadGrad=ctx.createLinearGradient(0,horizonY,0,riderY);
-        roadGrad.addColorStop(0,'#3a3a3a');roadGrad.addColorStop(0.4,'#2e2e2e');roadGrad.addColorStop(1,'#222222');
-        ctx.fillStyle=roadGrad;ctx.fill();
-        ctx.strokeStyle='rgba(255,255,255,0.12)';ctx.lineWidth=2;
-        ctx.beginPath();for(let i=0;i<leftEdge.length;i++){if(i===0)ctx.moveTo(leftEdge[i].x,leftEdge[i].y);else ctx.lineTo(leftEdge[i].x,leftEdge[i].y);}ctx.stroke();
-        ctx.beginPath();for(let i=0;i<rightEdge.length;i++){if(i===0)ctx.moveTo(rightEdge[i].x,rightEdge[i].y);else ctx.lineTo(rightEdge[i].x,rightEdge[i].y);}ctx.stroke();
-        ctx.setLineDash([12,18]);ctx.strokeStyle='rgba(255,255,255,0.20)';ctx.lineWidth=2;
-        ctx.beginPath();for(let i=0;i<projected.length;i++){if(i===0)ctx.moveTo(projected[i].x,projected[i].y);else ctx.lineTo(projected[i].x,projected[i].y);}ctx.stroke();ctx.setLineDash([]);
-        ctx.strokeStyle='rgba(249,115,22,0.30)';ctx.lineWidth=3;
-        ctx.beginPath();for(let i=0;i<projected.length;i++){if(i===0)ctx.moveTo(projected[i].x,projected[i].y);else ctx.lineTo(projected[i].x,projected[i].y);}ctx.stroke();
-        ctx.save();ctx.shadowColor='rgba(249,115,22,0.50)';ctx.shadowBlur=15;
-        ctx.fillStyle='#F97316';ctx.beginPath();ctx.arc(centerX,riderY-6,5,0,Math.PI*2);ctx.fill();
-        ctx.strokeStyle='#34D399';ctx.lineWidth=2.5;ctx.beginPath();
-        ctx.moveTo(centerX,riderY-11);ctx.lineTo(centerX-4,riderY+2);ctx.moveTo(centerX,riderY-11);ctx.lineTo(centerX+4,riderY+2);
-        ctx.moveTo(centerX-6,riderY-6);ctx.lineTo(centerX+6,riderY-6);ctx.stroke();ctx.restore();
+        return routePoints[routePoints.length-1].ele;
     }
 
     function drawElevation(currentDist) {
         const canvas=$('#elevCanvas'); const{ctx,w,h}=setupCanvas(canvas); ctx.clearRect(0,0,w,h);
         if(!mapReady||routePoints.length<2)return;
-        const padX=10,padTop=6,padBot=4,dW=w-padX*2,dH=h-padTop-padBot;
+        const padX=16,padTop=14,padBot=10,dW=w-padX*2,dH=h-padTop-padBot;
         const{minEle,maxEle,maxDist}=elevBounds; const eleRange=Math.max(maxEle-minEle,1);
         function toX(d){return padX+(clamp(d,0,maxDist)/maxDist)*dW;}
         function toY(e){return padTop+(1-(e-minEle)/eleRange)*dH;}
         const grad=ctx.createLinearGradient(0,padTop,0,h-padBot);
-        grad.addColorStop(0,'rgba(167,139,250,0.30)');grad.addColorStop(0.5,'rgba(14,165,233,0.15)');grad.addColorStop(1,'rgba(249,115,22,0.05)');
+        grad.addColorStop(0,'rgba(167,139,250,0.35)');grad.addColorStop(0.5,'rgba(14,165,233,0.18)');grad.addColorStop(1,'rgba(249,115,22,0.06)');
         ctx.beginPath();ctx.moveTo(toX(0),h-padBot);
         for(const p of routePoints)ctx.lineTo(toX(p.dist),toY(p.ele));
         ctx.lineTo(toX(routePoints[routePoints.length-1].dist),h-padBot);ctx.closePath();ctx.fillStyle=grad;ctx.fill();
-        ctx.beginPath();ctx.strokeStyle='rgba(167,139,250,0.6)';ctx.lineWidth=1.5;
+        ctx.beginPath();ctx.strokeStyle='rgba(167,139,250,0.55)';ctx.lineWidth=2;
         for(let i=0;i<routePoints.length;i++){const x=toX(routePoints[i].dist),y=toY(routePoints[i].ele);if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);}ctx.stroke();
         const cx=toX(currentDist);
         ctx.beginPath();ctx.moveTo(toX(0),h-padBot);
         for(const p of routePoints){if(p.dist>currentDist)break;ctx.lineTo(toX(p.dist),toY(p.ele));}
-        const curS=interpolateSample(currentDist);ctx.lineTo(cx,toY(curS.ele));ctx.lineTo(cx,h-padBot);ctx.closePath();ctx.fillStyle='rgba(249,115,22,0.10)';ctx.fill();
-        ctx.beginPath();ctx.arc(cx,toY(curS.ele),4,0,Math.PI*2);ctx.fillStyle='#F97316';ctx.fill();
-        ctx.beginPath();ctx.arc(cx,toY(curS.ele),7,0,Math.PI*2);ctx.strokeStyle='rgba(249,115,22,0.30)';ctx.lineWidth=1.5;ctx.stroke();
+        const curEle=getElevAtDist(currentDist);ctx.lineTo(cx,toY(curEle));ctx.lineTo(cx,h-padBot);ctx.closePath();ctx.fillStyle='rgba(249,115,22,0.12)';ctx.fill();
+        ctx.beginPath();ctx.strokeStyle='rgba(249,115,22,0.5)';ctx.lineWidth=2;
+        ctx.moveTo(toX(0),toY(routePoints[0].ele));
+        for(const p of routePoints){if(p.dist>currentDist)break;ctx.lineTo(toX(p.dist),toY(p.ele));}
+        ctx.lineTo(cx,toY(curEle));ctx.stroke();
+        ctx.save();ctx.shadowColor='rgba(249,115,22,0.6)';ctx.shadowBlur=10;
+        ctx.beginPath();ctx.arc(cx,toY(curEle),5,0,Math.PI*2);ctx.fillStyle='#F97316';ctx.fill();ctx.restore();
+        ctx.beginPath();ctx.arc(cx,toY(curEle),9,0,Math.PI*2);ctx.strokeStyle='rgba(249,115,22,0.25)';ctx.lineWidth=1.5;ctx.stroke();
+        ctx.fillStyle='rgba(255,255,255,0.4)';ctx.font='600 10px Inter,sans-serif';
+        ctx.fillText('START',toX(0),h-padBot+10);
+        const endLabel='END';ctx.fillText(endLabel,toX(maxDist)-ctx.measureText(endLabel).width,h-padBot+10);
     }
 
     // ── Animation loop ──
     function frame() {
         renderDistance += (targetDistance - renderDistance) * 0.15;
         if (Math.abs(targetDistance - renderDistance) < 0.02) renderDistance = targetDistance;
-        drawRoad(renderDistance); drawElevation(renderDistance);
+        drawElevation(renderDistance);
         animFrameId = requestAnimationFrame(frame);
     }
     animFrameId = requestAnimationFrame(frame);
@@ -429,7 +359,7 @@ export function mount(container) {
     };
     document.addEventListener('keydown', keyListener);
 
-    resizeListener = () => { drawRoad(renderDistance); drawElevation(renderDistance); };
+    resizeListener = () => { drawElevation(renderDistance); };
     window.addEventListener('resize', resizeListener);
 }
 
