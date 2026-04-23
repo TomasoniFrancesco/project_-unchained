@@ -1,10 +1,14 @@
 /**
  * Ride engine — main ride loop, data accumulation, finalization.
- * Port of unchained_project/ride/engine.py — uses setInterval instead of asyncio.
+ *
+ * Uses CyclingSimulator for Zwift-like physics:
+ *   - Speed is computed from rider power via full force model
+ *   - Trainer receives effective grade (slope × difficulty × gear)
+ *   - Loop runs at 4 Hz for smooth simulation
  */
 
 import { state } from '../state.js';
-import { PhysicsEngine } from './physics.js';
+import { CyclingSimulator } from './physics.js';
 import { GearSystem } from './gear.js';
 import { getSlopeAtDistance, getElevationAtDistance, computeSlopes, getTotalDistance } from '../gpx/parser.js';
 import * as bleManager from '../ble/manager.js';
@@ -14,7 +18,7 @@ import { saveActivity } from '../storage/activities.js';
 import { buildGPX, downloadGPX } from '../gpx/export.js';
 
 // Subsystems
-let physics = null;
+let simulator = null;
 let gears = null;
 let profile = null;
 
@@ -31,6 +35,9 @@ let pausedElapsedSnapshot = 0;
 let rideStartedAt = null;
 let rideFinalized = false;
 let startupResistanceRampS = 0;
+
+// Tick rate — 4 Hz for smooth physics
+const TICK_INTERVAL_MS = 250;
 
 // Data accumulators
 let rideData = null;
@@ -100,12 +107,12 @@ function recordTrackSample(distanceM, elapsedS) {
     });
 }
 
-function applyStartupResistanceRamp(targetSlope, elapsedS) {
-    if (startupResistanceRampS <= 0) return targetSlope;
+function applyStartupResistanceRamp(targetGrade, elapsedS) {
+    if (startupResistanceRampS <= 0) return targetGrade;
 
     const progress = Math.max(0, Math.min(elapsedS / startupResistanceRampS, 1));
     const easedProgress = progress * progress;
-    return targetSlope * easedProgress;
+    return targetGrade * easedProgress;
 }
 
 /**
@@ -122,15 +129,19 @@ export function startRide(route) {
     slopes = computeSlopes(routePoints);
     totalDistance = getTotalDistance(routePoints);
 
-    // Init subsystems
-    physics = new PhysicsEngine(
-        profile.weight_kg || config.physics.rider_mass,
-        config.physics.crr,
-        config.physics.cda,
-        config.physics.slope_smoothing,
-        config.physics.max_slope_rate,
-    );
+    // ── Init physics simulator ──
+    simulator = new CyclingSimulator({
+        riderMass:         profile.weight_kg || config.physics.rider_mass,
+        bikeMass:          config.physics.bike_mass || 9,
+        crr:               config.physics.crr,
+        cda:               config.physics.cda,
+        airDensity:        config.physics.air_density || 1.225,
+        trainerDifficulty: config.physics.trainer_difficulty ?? 0.50,
+        slopeSmoothing:    config.physics.slope_smoothing,
+        maxSlopeRate:      config.physics.max_slope_rate,
+    });
 
+    // ── Init gear system ──
     gears = new GearSystem(
         config.gear.count,
         config.gear.neutral,
@@ -180,10 +191,10 @@ export function startRide(route) {
     pausedElapsedSnapshot = 0;
     rideStartedAt = new Date();
 
-    console.log(`[RIDE] Started: ${route.name} (${totalDistance.toFixed(0)}m)`);
+    console.log(`[RIDE] Started: ${route.name} (${totalDistance.toFixed(0)}m) | Physics: CdA=${simulator.cda} Crr=${simulator.crr} Mass=${simulator.mass}kg Difficulty=${simulator.trainerDifficulty}`);
 
-    // Main loop — 1Hz
-    rideInterval = setInterval(rideLoop, 1000);
+    // Main loop — 4 Hz for smooth physics
+    rideInterval = setInterval(rideLoop, TICK_INTERVAL_MS);
 }
 
 function rideLoop() {
@@ -204,16 +215,34 @@ function rideLoop() {
     const dt = now - lastTime;
     lastTime = now;
 
-    const speedMs = state.get('speed') / 3.6;
-    let distance = state.get('distance') + speedMs * dt;
-    distance = Math.min(distance, totalDistance);
+    // ── 1. Read rider power from trainer ──
+    const power = state.get('power') || 0;
 
-    if (distance >= totalDistance) {
+    // ── 2. Get route slope at current position ──
+    const distance = state.get('distance');
+    const rawSlope = getSlopeAtDistance(slopes, distance);
+
+    // ── 3. Update slope smoothing / rate limiting ──
+    const smoothedSlope = simulator.updateSlope(rawSlope, dt);
+
+    // ── 4. Compute speed from power + physics ──
+    // Speed is computed using the TRUE slope (for virtual world accuracy).
+    // The trainer's felt resistance is scaled separately via trainerDifficulty.
+    simulator.computeSpeed(power, dt);
+
+    // ── 5. Advance position using physics-computed speed ──
+    const speedMs = simulator.speedMs;
+    let newDistance = distance + speedMs * dt;
+    newDistance = Math.min(newDistance, totalDistance);
+
+    // ── 6. Check for route completion ──
+    if (newDistance >= totalDistance) {
         state.update({
             distance: totalDistance,
             progress: 100,
             finished: true,
             ride_active: false,
+            speed: simulator.speedKmh,
         });
         recordTrackSample(totalDistance, state.get('elapsed'));
         void releaseTrainerLoad();
@@ -223,54 +252,55 @@ function rideLoop() {
         return;
     }
 
-    const rawSlope = getSlopeAtDistance(slopes, distance);
-    const smoothedSlope = physics.update(rawSlope, dt);
-    const elevation = getElevationAtDistance(routePoints, distance);
+    const elevation = getElevationAtDistance(routePoints, newDistance);
     const elapsed = now - startTime - pausedDurationTotal;
-    const progress = (distance / totalDistance) * 100;
+    const progress = (newDistance / totalDistance) * 100;
 
-    // Elevation gain
+    // ── 7. Elevation gain tracking ──
     if (elevation > rideData.prev_elevation) {
         rideData.elevation_gain += elevation - rideData.prev_elevation;
     }
     rideData.prev_elevation = elevation;
 
-    // Record samples
-    const power = state.get('power');
+    // ── 8. Record data samples (throttled to ~1 Hz) ──
     rideData.power_samples.push(power);
     rideData.cadence_samples.push(state.get('cadence'));
-    rideData.speed_samples.push(state.get('speed'));
+    rideData.speed_samples.push(simulator.speedKmh);
     rideData.max_power = Math.max(rideData.max_power, power);
-    recordTrackSample(distance, elapsed);
+    recordTrackSample(newDistance, elapsed);
 
-    // Gear offset
-    const targetEffectiveSlope = Math.max(-40, Math.min(40, smoothedSlope + gears.getResistanceOffset(smoothedSlope)));
-    const effectiveSlope = Math.round(Math.max(-40, Math.min(40, applyStartupResistanceRamp(targetEffectiveSlope, elapsed))) * 100) / 100;
-    const gearOffset = effectiveSlope - smoothedSlope;
+    // ── 9. Compute effective grade for trainer ──
+    // effectiveGrade = smoothedSlope × trainerDifficulty × gearScale
+    // This is what the trainer's electromagnetic brake targets.
+    const gearScale = gears.getCurrentScale();
+    const targetGrade = simulator.computeTrainerGrade(gearScale);
+    const effectiveGrade = applyStartupResistanceRamp(targetGrade, elapsed);
+    const gearOffset = Math.round((effectiveGrade - smoothedSlope) * 100) / 100;
 
-    // Calories
+    // ── 10. Calories ──
     let calories = 0;
     if (elapsed > 0 && rideData.power_samples.length > 0) {
         const avgPower = rideData.power_samples.reduce((a, b) => a + b, 0) / rideData.power_samples.length;
         calories = estimateCalories(profile, avgPower, elapsed);
     }
 
-    // Update state (batch)
+    // ── 11. Batch state update ──
     state.update({
-        distance,
+        distance: newDistance,
+        speed: simulator.speedKmh,
         slope: rawSlope,
-        effective_slope: effectiveSlope,
+        effective_slope: effectiveGrade,
         elevation,
         elevation_gain: Math.round(rideData.elevation_gain * 10) / 10,
         progress,
         elapsed,
         gear: gears.getDisplayGear(),
-        gear_offset: Math.round(gearOffset * 100) / 100,
+        gear_offset: gearOffset,
         calories,
     });
 
-    // Send simulation to trainer
-    sendTrainerSimulationParams(effectiveSlope);
+    // ── 12. Send effective grade to trainer via FTMS ──
+    sendTrainerSimulationParams(effectiveGrade);
 }
 
 /**

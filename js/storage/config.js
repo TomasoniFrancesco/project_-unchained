@@ -21,8 +21,11 @@ const DEFAULTS = {
     // Physics
     physics: {
         rider_mass: 80,
+        bike_mass: 9,
         crr: 0.005,
-        cda: 0.4,
+        cda: 0.32,
+        air_density: 1.225,
+        trainer_difficulty: 0.50,
         slope_smoothing: 0.25,
         max_slope_rate: 2.0,
     },
