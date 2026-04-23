@@ -102,18 +102,12 @@ export function mount(container) {
 
         <div class="scan-area stagger-3">
             <div class="scan-section-label">🎮 Remote Controllers (up to 2)</div>
-            <div class="scan-btn-row">
-                <button class="scan-btn" id="scanCtrlBtn">
-                    <div class="scan-spinner" id="scanCtrlSpinner"></div>
-                    <span id="scanCtrlLabel">Add Controller</span>
-                </button>
-                <button class="scan-btn scan-btn-secondary" id="scanCtrlAllBtn">
-                    <div class="scan-spinner" id="scanCtrlAllSpinner"></div>
-                    <span id="scanCtrlAllLabel">Can't find it? Scan all devices</span>
-                </button>
-            </div>
+            <button class="scan-btn" id="scanCtrlBtn">
+                <div class="scan-spinner" id="scanCtrlSpinner"></div>
+                <span id="scanCtrlLabel">Add Controller</span>
+            </button>
             <div class="slots-info" id="slotsInfo">2 slots available</div>
-            <div class="scan-helper">Use <strong>Add Controller</strong> for the normal flow. Use <strong>Scan all devices</strong> only if your remote does not appear in the Bluetooth picker.</div>
+            <div class="scan-helper">Click <strong>Add Controller</strong> to pair a Bluetooth remote. Each controller occupies one slot.</div>
         </div>
 
         <div class="custom-uuid-section stagger-3">
@@ -167,30 +161,28 @@ export function mount(container) {
     };
 
     // ── Controller scan ──
-    async function doControllerScan(mode) {
-        const isFiltered = mode === 'filtered';
-        const btn = $(isFiltered ? '#scanCtrlBtn' : '#scanCtrlAllBtn');
-        const spinner = $(isFiltered ? '#scanCtrlSpinner' : '#scanCtrlAllSpinner');
-        const label = $(isFiltered ? '#scanCtrlLabel' : '#scanCtrlAllLabel');
+    async function doControllerScan() {
+        const btn = $('#scanCtrlBtn');
+        const spinner = $('#scanCtrlSpinner');
+        const label = $('#scanCtrlLabel');
         btn.classList.add('scanning'); spinner.style.display = 'block';
         const origText = label.textContent; label.textContent = 'Select your remote…';
-        const result = await scanAndConnectController(mode);
+        const result = await scanAndConnectController();
         btn.classList.remove('scanning'); spinner.style.display = 'none'; label.textContent = origText;
         updateConnectedUI(); updateSlotsInfo();
         if (result?.duplicateOf !== undefined) {
-            alert(`That remote is already connected in Slot ${result.duplicateOf + 1}. Choose the other Bluetooth entry so the two controllers stay separate.`);
+            alert(`That remote is already connected in Slot ${result.duplicateOf + 1}. Choose a different device.`);
             return;
         }
         if (result) {
             $('#mapPanel').style.display = 'block';
             refreshMapUI();
-            if (result.inputReady === false) {
-                alert(`${result.issue || 'The remote connected, but it is not verified yet.'} Press any button on that remote now. If it never becomes "Input ready", you probably selected the wrong Bluetooth entry.`);
+            if (result.status === 'degraded') {
+                alert(result.issue || 'The remote connected, but no button channels were found.');
             }
         }
     }
-    $('#scanCtrlBtn').onclick = () => doControllerScan('filtered');
-    $('#scanCtrlAllBtn').onclick = () => doControllerScan('all');
+    $('#scanCtrlBtn').onclick = () => doControllerScan();
 
     // ── Learn mode ──
     ACTIONS.forEach(action => {
@@ -257,15 +249,21 @@ export function mount(container) {
     }
 
     function updateSlotsInfo() {
-        const c1 = state.get('controller_1_status'), c2 = state.get('controller_2_status');
-        const ready = [0, 1].map(slot => getControllerInfo(slot)).filter(info => info.connected && info.inputReady).length;
-        let used = 0; if (c1 === 'connected' || c1 === 'connecting') used++; if (c2 === 'connected' || c2 === 'connecting') used++;
+        const info1 = getControllerInfo(0), info2 = getControllerInfo(1);
+        const readyCount = [info1, info2].filter(i => i.status === 'ready' && i.inputReady).length;
+        let used = 0;
+        if (info1.status !== 'disconnected') used++;
+        if (info2.status !== 'disconnected') used++;
         const free = 2 - used; const el = $('#slotsInfo');
         if (free === 0) {
-            el.textContent = ready === used ? 'Both slots occupied — disconnect one to add another' : `Both slots occupied — ${ready}/${used} controller(s) ready for button input`;
+            el.textContent = readyCount === used
+                ? 'Both slots occupied — disconnect one to add another'
+                : `Both slots occupied — ${readyCount}/${used} verified`;
             el.style.color = 'var(--accent)';
         } else {
-            el.textContent = ready > 0 ? `${free} slot${free > 1 ? 's' : ''} available • ${ready} controller(s) ready` : `${free} slot${free > 1 ? 's' : ''} available`;
+            el.textContent = readyCount > 0
+                ? `${free} slot${free > 1 ? 's' : ''} available • ${readyCount} controller(s) verified`
+                : `${free} slot${free > 1 ? 's' : ''} available`;
             el.style.color = '';
         }
     }
@@ -282,19 +280,39 @@ export function mount(container) {
             const info = getControllerInfo(slot);
             const cStatus = info.status;
             const cName = info.name;
-            if (cStatus === 'connected' || cStatus === 'connecting') {
-                const dotClass = cStatus === 'connected' ? 'connected' : 'connecting';
-                const statusText = cStatus === 'connected'
-                    ? (info.inputReady ? 'Connected ✓ Input ready' : 'Connected, waiting for first button press')
-                    : 'Connecting…';
+            if (cStatus !== 'disconnected') {
+                // Determine dot color based on FSM state
+                let dotClass = 'connecting';
+                if (cStatus === 'ready' && info.inputReady) dotClass = 'connected';
+                else if (cStatus === 'ready') dotClass = 'connected';
+                else if (cStatus === 'degraded') dotClass = 'off';
+
+                // Determine status text
+                let statusText = 'Connecting…';
+                if (cStatus === 'scanning') statusText = 'Scanning…';
+                else if (cStatus === 'connecting') statusText = 'Establishing GATT…';
+                else if (cStatus === 'verifying') statusText = 'Verifying services…';
+                else if (cStatus === 'ready' && info.inputReady) statusText = 'Ready ✓ Input verified';
+                else if (cStatus === 'ready') statusText = 'Ready — awaiting first button press';
+                else if (cStatus === 'degraded') statusText = 'Connected (degraded) — no button channel';
+
+                // GATT indicator
+                const gattTag = info.gattConnected
+                    ? '<span style="color:var(--primary);font-size:0.55rem;"> ● GATT</span>'
+                    : '<span style="color:#EF4444;font-size:0.55rem;"> ○ GATT lost</span>';
+
                 const shortId = info.id ? info.id.slice(-8).toUpperCase() : '';
-                const idLine = shortId ? `<div class="device-submeta">Device ID ${shortId} • Slot ${slot + 1}</div>` : `<div class="device-submeta">Slot ${slot + 1}</div>`;
+                const idLine = shortId ? `<div class="device-submeta">Device ID ${shortId} • Slot ${slot + 1}${gattTag}</div>` : `<div class="device-submeta">Slot ${slot + 1}${gattTag}</div>`;
                 const issueClass = info.inputReady ? 'device-submeta' : 'device-submeta device-warning';
                 const issueLine = info.issue ? `<div class="${issueClass}">${info.issue}</div>` : '';
                 rows.push(`<div class="card device-row"><div class="device-dot ${dotClass}"></div><div style="flex:1;min-width:0;"><div class="device-name">${cName || 'Controller ' + (slot+1)}</div><div class="device-meta">${statusText}</div>${idLine}${issueLine}</div><span class="type-badge controller">controller</span><button class="disconnect-btn" data-slot="${slot}">✕</button></div>`);
             }
         }
-        if (state.get('controller_1_status') === 'connected' || state.get('controller_2_status') === 'connected') {
+        const anyControllerActive = [0, 1].some(s => {
+            const st = getControllerInfo(s).status;
+            return st === 'ready' || st === 'degraded' || st === 'verifying';
+        });
+        if (anyControllerActive) {
             $('#mapPanel').style.display = 'block'; refreshMapUI();
         }
         list.innerHTML = rows.length ? rows.join('') : '<div class="empty-connected">No devices connected yet</div>';
@@ -302,7 +320,8 @@ export function mount(container) {
         list.querySelectorAll('.disconnect-btn').forEach(btn => {
             btn.onclick = () => {
                 disconnectController(parseInt(btn.dataset.slot)); updateConnectedUI(); updateSlotsInfo();
-                if (state.get('controller_1_status') !== 'connected' && state.get('controller_2_status') !== 'connected') $('#mapPanel').style.display = 'none';
+                const anyActive = [0, 1].some(s => getControllerInfo(s).status !== 'disconnected');
+                if (!anyActive) $('#mapPanel').style.display = 'none';
             };
         });
     }

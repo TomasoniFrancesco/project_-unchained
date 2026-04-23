@@ -103,10 +103,14 @@ let bikeDataChar        = null;
 let onTrainerData       = null;
 
 // ── Controllers state (2 slots) ───────────────────────────────────
+// Status FSM: disconnected → scanning → connecting → verifying → ready | degraded
 const controllers = [
-    { device: null, server: null, id: '', name: '', status: 'disconnected', subscriptions: [], writableChannels: [], inputReady: false, issue: '' },
-    { device: null, server: null, id: '', name: '', status: 'disconnected', subscriptions: [], writableChannels: [], inputReady: false, issue: '' },
+    { device: null, server: null, id: '', name: '', status: 'disconnected', subscriptions: [], writableChannels: [], inputReady: false, issue: '', heartbeatId: null },
+    { device: null, server: null, id: '', name: '', status: 'disconnected', subscriptions: [], writableChannels: [], inputReady: false, issue: '', heartbeatId: null },
 ];
+
+// Slot mutex — prevents concurrent allocation races
+const slotLocked = [false, false];
 
 // ── Learn mode ────────────────────────────────────────────────────
 let learnModeAction   = null;
@@ -361,7 +365,8 @@ export function disconnectTrainer() {
 
 function findFreeSlot() {
     for (let i = 0; i < controllers.length; i++) {
-        if (!controllers[i].server || !controllers[i].server.connected) return i;
+        if (slotLocked[i]) continue;
+        if (controllers[i].status === 'disconnected') return i;
     }
     return -1;
 }
@@ -374,11 +379,39 @@ function syncControllerState(slot) {
         [`controller_${n}_name`]:   c.name,
         [`controller_${n}_input_ready`]: !!c.inputReady,
         [`controller_${n}_issue`]: c.issue || '',
+        [`controller_${n}_gatt_connected`]: !!(c.server && c.server.connected),
     });
 }
 
+// ── Connection heartbeat ──────────────────────────────────────────
+// Polls server.connected every 2s to catch silent disconnections
+// that Chrome's gattserverdisconnected event sometimes misses.
+
+function startHeartbeat(slot) {
+    stopHeartbeat(slot);
+    const n = slot + 1;
+    controllers[slot].heartbeatId = setInterval(() => {
+        const ctrl = controllers[slot];
+        const gattAlive = ctrl.server && ctrl.server.connected;
+        if (!gattAlive && ctrl.status !== 'disconnected') {
+            console.warn(`[BLE] Controller ${n}: heartbeat detected silent disconnect`);
+            resetControllerSlot(slot);
+        }
+        // Always re-sync so UI reflects true GATT state
+        syncControllerState(slot);
+    }, 2000);
+}
+
+function stopHeartbeat(slot) {
+    const ctrl = controllers[slot];
+    if (ctrl.heartbeatId) {
+        clearInterval(ctrl.heartbeatId);
+        ctrl.heartbeatId = null;
+    }
+}
+
 /**
- * Subscribe to the most likely controller notify characteristics.
+ * Tear down notification subscriptions and writable channels for a slot.
  */
 function clearControllerRuntime(slot) {
     const ctrl = controllers[slot];
@@ -399,14 +432,21 @@ function clearControllerRuntime(slot) {
 }
 
 function resetControllerSlot(slot) {
+    stopHeartbeat(slot);
     const ctrl = controllers[slot];
     clearControllerRuntime(slot);
+    // Disconnect GATT if still alive
+    try {
+        if (ctrl.server && ctrl.server.connected) ctrl.server.disconnect();
+    } catch (_) { /* noop */ }
     ctrl.server = null;
     ctrl.device = null;
     ctrl.id = '';
     ctrl.name = '';
     ctrl.status = 'disconnected';
     ctrl.issue = '';
+    ctrl.heartbeatId = null;
+    slotLocked[slot] = false;
     syncControllerState(slot);
 }
 
@@ -570,7 +610,7 @@ async function subscribeControllerChannels(slot, server, label) {
  * Connection lives in current page context — no persistence across pages.
  * Both connect.html and ride.html can initiate connections.
  */
-export async function scanAndConnectController(mode = 'all') {
+export async function scanAndConnectController() {
     const slot = findFreeSlot();
     if (slot === -1) {
         console.warn('[BLE] Both controller slots occupied.');
@@ -578,81 +618,107 @@ export async function scanAndConnectController(mode = 'all') {
     }
 
     const n = slot + 1;
-    state.set(`controller_${n}_status`, 'scanning');
+    slotLocked[slot] = true;
+
+    const ctrl = controllers[slot];
+    ctrl.status = 'scanning';
+    ctrl.issue  = '';
+    syncControllerState(slot);
 
     try {
         const optionalServices = buildOptionalServices();
 
-        let requestOptions;
-        if (mode === 'filtered') {
-            requestOptions = {
-                filters: [
-                    { namePrefix: 'Zwift' },
-                    { namePrefix: 'Remote' },
-                    { namePrefix: 'Controller' },
-                    { namePrefix: 'Tacx' },
-                    { namePrefix: 'Wahoo' },
-                    { namePrefix: 'Elite' },
-                    { namePrefix: 'KICKR' },
-                    { namePrefix: 'Shutter' },
-                    { namePrefix: 'AB Shutter' },
-                    { namePrefix: 'iTAG' },
-                    { namePrefix: 'BT' },
-                    { namePrefix: 'Gamepad' },
-                    { namePrefix: 'Media' },
-                    { namePrefix: 'Click' },
-                ],
-                optionalServices,
-            };
-        } else {
-            requestOptions = {
-                acceptAllDevices: true,
-                optionalServices,
-            };
-        }
+        // Always use explicit filters — never acceptAllDevices.
+        // This prevents Chrome from showing cached/bonded devices
+        // that are no longer nearby.
+        const device = await navigator.bluetooth.requestDevice({
+            filters: [
+                { namePrefix: 'Zwift' },
+                { namePrefix: 'Remote' },
+                { namePrefix: 'Controller' },
+                { namePrefix: 'Tacx' },
+                { namePrefix: 'Wahoo' },
+                { namePrefix: 'Elite' },
+                { namePrefix: 'KICKR' },
+                { namePrefix: 'Shutter' },
+                { namePrefix: 'AB Shutter' },
+                { namePrefix: 'iTAG' },
+                { namePrefix: 'BT' },
+                { namePrefix: 'Gamepad' },
+                { namePrefix: 'Media' },
+                { namePrefix: 'Click' },
+                { namePrefix: 'Play' },
+                { namePrefix: 'HID' },
+            ],
+            optionalServices,
+        });
 
-        const device = await navigator.bluetooth.requestDevice(requestOptions);
+        // ── Duplicate check ──
         const existingSlot = findExistingControllerSlotByDeviceId(device.id, slot);
         if (existingSlot !== -1) {
-            console.warn(`[BLE] Refusing duplicate controller selection for slot ${slot + 1}: already connected in slot ${existingSlot + 1}`);
+            console.warn(`[BLE] Duplicate controller: ${device.name} already in slot ${existingSlot + 1}`);
+            slotLocked[slot] = false;
             resetControllerSlot(slot);
             return { device, duplicateOf: existingSlot };
         }
 
-        const ctrl = controllers[slot];
         ctrl.device = device;
         ctrl.id     = device.id || '';
         ctrl.name   = device.name || `Controller ${n}`;
         ctrl.status = 'connecting';
-        ctrl.issue  = '';
+        ctrl.issue  = 'Establishing GATT connection…';
         syncControllerState(slot);
 
         console.log(`[BLE] Controller ${n} selected: ${device.name}`);
 
+        // ── GATT disconnect handler ──
         device.addEventListener('gattserverdisconnected', () => {
-            console.log(`[BLE] Controller ${n} disconnected`);
+            console.log(`[BLE] Controller ${n} disconnected (GATT event)`);
             resetControllerSlot(slot);
         });
 
+        // ── GATT connect ──
         ctrl.server = await device.gatt.connect();
         console.log(`[BLE] Controller ${n} GATT connected`);
+
+        // Immediate GATT sanity check
+        if (!ctrl.server.connected) {
+            console.warn(`[BLE] Controller ${n}: server.connected is false right after connect()`);
+            ctrl.issue = 'GATT connection failed immediately.';
+            slotLocked[slot] = false;
+            resetControllerSlot(slot);
+            return null;
+        }
+
+        // ── Verifying phase: discover services & subscribe ──
+        ctrl.status = 'verifying';
+        ctrl.issue  = 'GATT connected. Discovering services…';
+        syncControllerState(slot);
 
         const subscribed = await subscribeControllerChannels(slot, ctrl.server, `Controller ${n}`);
 
         if (!subscribed) {
             console.warn(`[BLE] Controller ${n}: no notifiable characteristics — buttons won't work.`);
-            ctrl.issue = 'Connected, but no button channel was detected.';
+            ctrl.status = 'degraded';
+            ctrl.issue  = 'Connected but no button channel detected. Buttons won\'t work.';
+            ctrl.inputReady = false;
         } else {
-            ctrl.issue = 'Connected. Press any button to verify the correct remote.';
+            ctrl.status = 'ready';
+            ctrl.issue  = 'Connected. Press any button to verify input.';
+            ctrl.inputReady = false;
         }
 
-        ctrl.inputReady = false;
-        ctrl.status = 'connected';
         syncControllerState(slot);
-        console.log(`[BLE] Controller ${n} ready (subscribed: ${subscribed})`);
-        return { device, slot, inputReady: subscribed, issue: ctrl.issue };
+
+        // ── Start heartbeat monitoring ──
+        startHeartbeat(slot);
+        slotLocked[slot] = false;
+
+        console.log(`[BLE] Controller ${n} setup complete (status: ${ctrl.status})`);
+        return { device, slot, status: ctrl.status, issue: ctrl.issue };
 
     } catch (err) {
+        slotLocked[slot] = false;
         resetControllerSlot(slot);
         if (err.name === 'NotFoundError') {
             console.log('[BLE] Controller scan cancelled');
@@ -877,18 +943,21 @@ function fire(action) {
 // ══════════════════════════════════════════════════════════════════
 
 export function isControllerConnected() {
-    return controllers.some(c => c.server !== null && c.server.connected);
+    return controllers.some(c => c.server && c.server.connected
+        && (c.status === 'ready' || c.status === 'degraded'));
 }
 
 export function getControllerInfo(slot) {
     const c = controllers[slot];
+    const gattConnected = !!(c.server && c.server.connected);
     return {
-        name:      c.name,
-        id:        c.id,
-        status:    c.status,
-        connected: c.server !== null && c.server.connected,
-        inputReady: !!c.inputReady,
-        issue: c.issue,
+        name:           c.name,
+        id:             c.id,
+        status:         c.status,
+        connected:      gattConnected && c.status !== 'disconnected',
+        gattConnected,
+        inputReady:     !!c.inputReady,
+        issue:          c.issue,
     };
 }
 
@@ -897,16 +966,7 @@ export function disconnectController(slot) {
         controllers.forEach((_, i) => disconnectController(i));
         return;
     }
-    const c = controllers[slot];
-    clearControllerRuntime(slot);
-    if (c.server && c.server.connected) c.server.disconnect();
-    c.server = null;
-    c.device = null;
-    c.id     = '';
-    c.name   = '';
-    c.status = 'disconnected';
-    c.issue  = '';
-    syncControllerState(slot);
+    resetControllerSlot(slot);
 }
 
 // ══════════════════════════════════════════════════════════════════
