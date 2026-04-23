@@ -142,16 +142,10 @@ export function startRide(route) {
     });
 
     // ── Init gear system ──
-    gears = new GearSystem(
-        config.gear.count,
-        config.gear.neutral,
-        config.gear.step_grade,
-        config.gear.max_difficulty_scale,
-        config.gear.debounce_ms,
-        config.gear.smoothing,
-        config.gear.min_difficulty_scale,
-        config.gear.downhill_scale,
-    );
+    gears = new GearSystem({
+        debounceMs: config.gear.debounce_ms || 200,
+        smoothing:  config.gear.smoothing || 0.3,
+    });
 
     rideData = newRideData();
     rideFinalized = false;
@@ -225,6 +219,9 @@ function rideLoop() {
     // ── 3. Update slope smoothing / rate limiting ──
     const smoothedSlope = simulator.updateSlope(rawSlope, dt);
 
+    // ── 3b. Update gear smoothing ──
+    gears.update(dt);
+
     // ── 4. Compute speed from power + physics ──
     // Speed is computed using the TRUE slope (for virtual world accuracy).
     // The trainer's felt resistance is scaled separately via trainerDifficulty.
@@ -270,12 +267,14 @@ function rideLoop() {
     recordTrackSample(newDistance, elapsed);
 
     // ── 9. Compute effective grade for trainer ──
-    // effectiveGrade = smoothedSlope × trainerDifficulty × gearScale
-    // This is what the trainer's electromagnetic brake targets.
-    const gearScale = gears.getCurrentScale();
-    const targetGrade = simulator.computeTrainerGrade(gearScale);
-    const effectiveGrade = applyStartupResistanceRamp(targetGrade, elapsed);
-    const gearOffset = Math.round((effectiveGrade - smoothedSlope) * 100) / 100;
+    // effectiveGrade = slope × trainerDifficulty + gearGradeOffset
+    // The gear offset is additive — it works on flats, climbs, and descents.
+    // Harder gear → positive offset → trainer pushes back harder.
+    // Easier gear → negative offset → trainer lets you spin easier.
+    const gearGradeOffset = gears.getGradeOffset();
+    const baseTrainerGrade = simulator.computeTrainerGrade(1.0); // no gear scaling here
+    const targetGrade = Math.max(-40, Math.min(40, baseTrainerGrade + gearGradeOffset));
+    const effectiveGrade = Math.round(applyStartupResistanceRamp(targetGrade, elapsed) * 100) / 100;
 
     // ── 10. Calories ──
     let calories = 0;
@@ -295,7 +294,8 @@ function rideLoop() {
         progress,
         elapsed,
         gear: gears.getDisplayGear(),
-        gear_offset: gearOffset,
+        gear_offset: Math.round(gearGradeOffset * 100) / 100,
+        gear_ratio: gears.getRatio(),
         calories,
     });
 

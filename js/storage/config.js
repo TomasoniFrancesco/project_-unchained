@@ -6,16 +6,10 @@
 const STORAGE_KEY = 'fz_config';
 
 const DEFAULTS = {
-    // Gear system
+    // Gear system (virtual drivetrain)
     gear: {
-        count: 21,
-        neutral: 5,
-        step_grade: 0.5,
-        max_difficulty_scale: 3.0,
         debounce_ms: 200,
         smoothing: 0.3,
-        min_difficulty_scale: 0.15,
-        downhill_scale: 0.5,
         startup_resistance_ramp_s: 12,
     },
     // Physics

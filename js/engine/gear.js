@@ -1,116 +1,184 @@
 /**
- * Virtual gear system — scales trainer gradient feel instead of adding a tiny fixed offset.
- * Direct port of unchained_project/ride/gear.py
+ * Virtual Drivetrain — realistic gear system for indoor cycling.
+ *
+ * Models a real cassette with chainring and rear cogs.
+ * Each gear has a physical ratio (front teeth / rear teeth) that
+ * determines how much resistance offset is sent to the trainer.
+ *
+ * On a real bike, harder gears at the same cadence produce higher
+ * wheel speed and therefore more aerodynamic drag. On a smart trainer
+ * in SIM mode, we simulate this by adding a grade offset:
+ *
+ *   effectiveGrade = routeSlope × trainerDifficulty + gearGradeOffset
+ *
+ * This ensures gear changes affect resistance on flats, climbs, and descents.
+ *
+ * Power = Torque × AngularVelocity — at constant power:
+ *   - Harder gear → more torque, lower cadence
+ *   - Easier gear → less torque, higher cadence
+ *   - The trainer resistance reflects this via the grade offset
  */
 
+// ── Default cassette: 50T front × 11-speed rear ─────────────────
+// Ordered easiest (largest cog) to hardest (smallest cog).
+const DEFAULT_REAR_COGS = [32, 28, 25, 22, 20, 18, 16, 14, 13, 12, 11];
+const DEFAULT_CHAINRING = 50;
+const DEFAULT_WHEEL_CIRC = 2.105; // meters — 700c × 25mm tire
+
+// How much grade offset (%) per unit of ratio difference from neutral.
+// Calibrated so that full cassette range ≈ ±3% grade offset, which is
+// clearly noticeable on any smart trainer.
+const DEFAULT_OFFSET_SCALE = 2.0;
+
 export class GearSystem {
-    constructor(
-        count = 21,
-        neutral = 5,
-        stepGrade = 0.5,
-        maxDifficultyScale = null,
-        debounceMs = 200,
-        smoothing = 0.3,
-        minDifficultyScale = 0.15,
-        downhillScale = 0.5,
-    ) {
-        this.gearMin = 0;
-        this.gearMax = count - 1;
-        this.gearNeutral = Math.max(this.gearMin, Math.min(neutral, this.gearMax));
-        this.stepGrade = stepGrade;
-        this.debounceMs = debounceMs;
-        this.smoothingFactor = smoothing;
-        this.minDifficultyScale = Math.max(0, Math.min(minDifficultyScale, 1));
-        this.maxDifficultyScale = Math.max(1, maxDifficultyScale ?? (1 + Math.max(0, stepGrade)));
-        this.downhillScale = Math.max(0, Math.min(downhillScale, 1));
+    /**
+     * @param {Object} [config]
+     * @param {number[]} [config.rearCogs] — tooth counts, easiest→hardest
+     * @param {number}   [config.chainring] — front chainring teeth
+     * @param {number}   [config.neutralGear] — index of neutral gear (null = middle)
+     * @param {number}   [config.offsetScale] — grade offset per ratio unit
+     * @param {number}   [config.wheelCircumference] — wheel circ in meters
+     * @param {number}   [config.debounceMs] — minimum ms between shifts
+     * @param {number}   [config.smoothing] — EMA alpha for smooth transitions (0–1)
+     */
+    constructor(config = {}) {
+        this.rearCogs     = config.rearCogs || [...DEFAULT_REAR_COGS];
+        this.chainring    = config.chainring || DEFAULT_CHAINRING;
+        this.wheelCirc    = config.wheelCircumference || DEFAULT_WHEEL_CIRC;
+        this.offsetScale  = config.offsetScale ?? DEFAULT_OFFSET_SCALE;
+        this.debounceMs   = config.debounceMs ?? 200;
+        this.smoothing    = config.smoothing ?? 0.3;
 
-        this.currentGear = this.gearMin;
-        this._lastShiftTime = 0;
-        this._targetScale = this._computeScaleForGear(this.currentGear);
-        this._smoothScale = this._targetScale;
+        this.gearCount    = this.rearCogs.length;
+        this.gearMin      = 0;
+        this.gearMax      = this.gearCount - 1;
+
+        // Neutral gear — defaults to middle of cassette
+        const defaultNeutral = Math.floor(this.gearCount / 2);
+        this.neutralGear  = config.neutralGear ?? defaultNeutral;
+        this.neutralGear  = Math.max(this.gearMin, Math.min(this.neutralGear, this.gearMax));
+
+        // Precompute ratios
+        this._ratios = this.rearCogs.map(cog => this.chainring / cog);
+        this._neutralRatio = this._ratios[this.neutralGear];
+
+        // State
+        this.currentGear     = this.neutralGear; // Start at neutral (not min!)
+        this._lastShiftTime  = 0;
+        this._targetOffset   = 0;  // target grade offset (%)
+        this._smoothOffset   = 0;  // smoothed grade offset (%)
     }
 
-    _computeScaleForGear(gear) {
-        if (gear <= this.gearNeutral) {
-            const lowerSpan = Math.max(1, this.gearNeutral - this.gearMin);
-            const ratio = (gear - this.gearMin) / lowerSpan;
-            return this.minDifficultyScale + ((1 - this.minDifficultyScale) * ratio);
-        }
+    // ──────────────────────────────────────────────────────────────
+    //  SHIFTING
+    // ──────────────────────────────────────────────────────────────
 
-        const upperSpan = Math.max(1, this.gearMax - this.gearNeutral);
-        const ratio = (gear - this.gearNeutral) / upperSpan;
-        return 1 + ((this.maxDifficultyScale - 1) * ratio);
-    }
-
-    _updateSmoothScale() {
-        this._smoothScale += this.smoothingFactor * (this._targetScale - this._smoothScale);
-        return this._smoothScale;
-    }
-
-    _transformSlope(baseSlope, scale) {
-        const slopeForTrainer = baseSlope < 0 ? baseSlope * this.downhillScale : baseSlope;
-        return slopeForTrainer * scale;
-    }
-
+    /**
+     * Shift to a harder gear (higher ratio, smaller rear cog).
+     */
     shiftUp() {
         const now = performance.now();
-        if ((now - this._lastShiftTime) < this.debounceMs) {
-            console.log(`[GEAR] Shift UP blocked (debounce ${this.debounceMs}ms)`);
-            return;
-        }
-        if (this.currentGear < this.gearMax) {
-            const old = this.currentGear;
-            this.currentGear += 1;
-            this._targetScale = this._computeScaleForGear(this.currentGear);
-            this._lastShiftTime = now;
-            console.log(`[GEAR] ${old} → ${this.currentGear} (UP) | trainer scale: ${this._targetScale.toFixed(2)}x`);
-        }
+        if ((now - this._lastShiftTime) < this.debounceMs) return;
+        if (this.currentGear >= this.gearMax) return;
+
+        const old = this.currentGear;
+        this.currentGear += 1;
+        this._targetOffset = this._computeOffset(this.currentGear);
+        this._lastShiftTime = now;
+        console.log(`[GEAR] ${old}→${this.currentGear} (HARDER) | ratio: ${this.getRatio().toFixed(2)} | offset: ${this._targetOffset.toFixed(1)}%`);
     }
 
+    /**
+     * Shift to an easier gear (lower ratio, larger rear cog).
+     */
     shiftDown() {
         const now = performance.now();
-        if ((now - this._lastShiftTime) < this.debounceMs) {
-            console.log(`[GEAR] Shift DOWN blocked (debounce ${this.debounceMs}ms)`);
-            return;
-        }
-        if (this.currentGear > this.gearMin) {
-            const old = this.currentGear;
-            this.currentGear -= 1;
-            this._targetScale = this._computeScaleForGear(this.currentGear);
-            this._lastShiftTime = now;
-            console.log(`[GEAR] ${old} → ${this.currentGear} (DOWN) | trainer scale: ${this._targetScale.toFixed(2)}x`);
+        if ((now - this._lastShiftTime) < this.debounceMs) return;
+        if (this.currentGear <= this.gearMin) return;
+
+        const old = this.currentGear;
+        this.currentGear -= 1;
+        this._targetOffset = this._computeOffset(this.currentGear);
+        this._lastShiftTime = now;
+        console.log(`[GEAR] ${old}→${this.currentGear} (EASIER) | ratio: ${this.getRatio().toFixed(2)} | offset: ${this._targetOffset.toFixed(1)}%`);
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    //  GRADE OFFSET COMPUTATION
+    // ──────────────────────────────────────────────────────────────
+
+    /**
+     * Compute the grade offset for a given gear index.
+     * Offset is 0% at neutral gear, negative for easier, positive for harder.
+     */
+    _computeOffset(gearIndex) {
+        const ratio = this._ratios[gearIndex];
+        return (ratio - this._neutralRatio) * this.offsetScale;
+    }
+
+    /**
+     * Must be called each tick to smooth the transition.
+     * @param {number} dt — time step in seconds
+     */
+    update(dt) {
+        if (dt <= 0) return;
+        // EMA smoothing toward target offset
+        this._smoothOffset += this.smoothing * (this._targetOffset - this._smoothOffset);
+        // Snap when close enough
+        if (Math.abs(this._targetOffset - this._smoothOffset) < 0.01) {
+            this._smoothOffset = this._targetOffset;
         }
     }
 
-    getResistanceOffset(baseSlope = 0) {
-        const currentScale = this._updateSmoothScale();
-        return this._transformSlope(baseSlope, currentScale) - baseSlope;
+    // ──────────────────────────────────────────────────────────────
+    //  ACCESSORS
+    // ──────────────────────────────────────────────────────────────
+
+    /**
+     * Get the current smoothed grade offset (%) to add to trainer grade.
+     * Positive = harder, negative = easier.
+     */
+    getGradeOffset() {
+        return Math.round(this._smoothOffset * 100) / 100;
     }
 
+    /** Current gear ratio (chainring / rear cog). */
+    getRatio() {
+        return this._ratios[this.currentGear];
+    }
+
+    /** Current gear index (0 = easiest). */
     getGear() { return this.currentGear; }
-    getDisplayGear() { return this.currentGear; }
-    getTargetOffset(baseSlope = 0) {
-        return this._transformSlope(baseSlope, this._targetScale) - baseSlope;
-    }
-    getCurrentScale() { return this._smoothScale; }
 
-    reset(config = {}) {
-        if (config.count !== undefined) this.gearMax = config.count - 1;
-        if (config.neutral !== undefined) this.gearNeutral = Math.max(this.gearMin, Math.min(config.neutral, this.gearMax));
-        if (config.step_grade !== undefined) this.stepGrade = config.step_grade;
-        if (config.max_difficulty_scale !== undefined) this.maxDifficultyScale = Math.max(1, config.max_difficulty_scale);
-        if (config.min_difficulty_scale !== undefined) {
-            this.minDifficultyScale = Math.max(0, Math.min(config.min_difficulty_scale, 1));
-        }
-        if (config.downhill_scale !== undefined) {
-            this.downhillScale = Math.max(0, Math.min(config.downhill_scale, 1));
-        }
-        if (config.max_difficulty_scale === undefined) {
-            this.maxDifficultyScale = Math.max(1, 1 + Math.max(0, this.stepGrade));
-        }
-        this.currentGear = this.gearMin;
+    /** Display gear number (1-indexed for UI). */
+    getDisplayGear() { return this.currentGear + 1; }
+
+    /** Total number of gears. */
+    getGearCount() { return this.gearCount; }
+
+    /** Current rear cog tooth count. */
+    getRearCog() { return this.rearCogs[this.currentGear]; }
+
+    /** Front chainring tooth count. */
+    getChainring() { return this.chainring; }
+
+    /**
+     * Compute virtual wheel speed from cadence and gear ratio.
+     * @param {number} cadenceRPM
+     * @returns {number} speed in m/s
+     */
+    computeWheelSpeed(cadenceRPM) {
+        if (cadenceRPM <= 0) return 0;
+        return (cadenceRPM / 60) * this.getRatio() * this.wheelCirc;
+    }
+
+    /**
+     * Reset to neutral gear.
+     */
+    reset() {
+        this.currentGear = this.neutralGear;
         this._lastShiftTime = 0;
-        this._targetScale = this._computeScaleForGear(this.currentGear);
-        this._smoothScale = this._targetScale;
+        this._targetOffset = 0;
+        this._smoothOffset = 0;
     }
 }
