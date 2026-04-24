@@ -22,9 +22,16 @@ export async function mount(container) {
     container.innerHTML = `
     <style>
         .hub { width:100%; max-width:520px; display:flex; flex-direction:column; gap:0.6rem; }
+        .home-section { max-width:480px; width:100%; }
         .typewriter-word { color:#EAB308; font-weight:700; }
         .typewriter-cursor { color:#EAB308; font-weight:700; animation:cursorBlink 0.8s step-end infinite; }
         @keyframes cursorBlink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+        /* ── Home responsive: phones ── */
+        @media (max-width: 640px) {
+            .hub { max-width: 100%; }
+            .home-section { max-width: 100%; }
+        }
     </style>
     <div class="page">
         <div class="brand-header">
@@ -34,7 +41,7 @@ export async function mount(container) {
             </p>
         </div>
 
-        <div class="section stagger-1" style="max-width:480px;">
+        <div class="section stagger-1 home-section">
             <div id="trainerStatus">
                 <div class="status-pill disconnected">
                     <span class="status-dot"></span>
@@ -43,7 +50,7 @@ export async function mount(container) {
             </div>
         </div>
 
-        <div class="section stagger-2" style="max-width:480px;">
+        <div class="section stagger-2 home-section">
             <a class="card card-interactive" href="#connect" id="navConnect">
                 <div class="nav-card">
                     <div class="nav-card-icon icon-blue">
@@ -60,7 +67,7 @@ export async function mount(container) {
             </a>
         </div>
 
-        <div class="section stagger-3" style="max-width:480px;">
+        <div class="section stagger-3 home-section">
             <a class="card card-interactive" href="#routes" id="navRoutes">
                 <div class="nav-card">
                     <div class="nav-card-icon icon-green">
@@ -77,7 +84,7 @@ export async function mount(container) {
             </a>
         </div>
 
-        <div class="section stagger-4" style="max-width:480px;">
+        <div class="section stagger-4 home-section">
             <a class="card card-interactive" href="#history" id="navHistory">
                 <div class="nav-card">
                     <div class="nav-card-icon icon-amber">
@@ -94,7 +101,7 @@ export async function mount(container) {
             </a>
         </div>
 
-        <div class="section stagger-5" style="max-width:480px;">
+        <div class="section stagger-5 home-section">
             <a class="card card-interactive" href="#profile" id="navProfile">
                 <div class="nav-card">
                     <div class="nav-card-icon icon-purple">
@@ -112,7 +119,7 @@ export async function mount(container) {
         </div>
 
         ${!isWebBluetoothAvailable() ? `
-        <div style="max-width:480px;width:100%;">
+        <div class="home-section">
             <div class="intro-box" style="border-color:rgba(239,68,68,0.3);color:#EF4444;">
                 ⚠️ <strong>Web Bluetooth non disponibile.</strong><br>
                 <span style="color:var(--text-muted);font-size:0.72rem;">Usa Chrome o Edge su desktop/Android. Safari e iOS non sono supportati.</span>

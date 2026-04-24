@@ -2,7 +2,7 @@
 <html lang="en" data-theme="dark">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>UNCHAINED PROJECT — Setup</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -35,6 +35,31 @@
         .guide-text { font-size:0.78rem; color:var(--text-secondary); line-height:1.5; }
         .guide-text a { color:var(--strava); text-decoration:none; font-weight:600; }
         .guide-text code { background:rgba(255,255,255,0.08); padding:0.15rem 0.4rem; border-radius:4px; font-size:0.72rem; color:var(--primary); }
+
+        /* ── Setup responsive: phones ── */
+        @media (max-width: 640px) {
+            .setup-container { max-width:100%; }
+            .welcome-emoji { font-size:2.4rem; }
+            .welcome-title { font-size:1.1rem; }
+            .welcome-text { font-size:0.75rem; margin-bottom:1.5rem; }
+            .step-title { font-size:0.95rem; }
+            .step-desc { font-size:0.7rem; margin-bottom:1.2rem; }
+            .btn-row { flex-direction:column; gap:0.5rem; }
+            .btn-row .btn { flex:none; width:100%; }
+            .guide-step { gap:0.6rem; padding:0.7rem 0; }
+            .guide-num { width:24px; height:24px; font-size:0.65rem; }
+            .guide-text { font-size:0.72rem; }
+            .guide-text code { font-size:0.65rem; word-break:break-all; }
+            .step-line { width:28px; }
+        }
+
+        /* ── Setup responsive: very small phones ── */
+        @media (max-width: 480px) {
+            .welcome-emoji { font-size:2rem; }
+            .welcome-title { font-size:0.95rem; }
+            .step-line { width:20px; }
+            .step-dot { width:8px; height:8px; }
+        }
     </style>
 </head>
 <body class="with-mountains">

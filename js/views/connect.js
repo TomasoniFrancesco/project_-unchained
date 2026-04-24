@@ -77,6 +77,30 @@ export function mount(container) {
         .disconnect-btn:hover { color: #EF4444; border-color: rgba(239,68,68,0.6); background: rgba(239,68,68,0.08); }
         .device-submeta { font-size: 0.6rem; color: var(--text-muted); margin-top: 0.18rem; }
         .device-warning { color: #F59E0B; }
+
+        /* ── Connect view responsive: phones ── */
+        @media (max-width: 640px) {
+            .connect-page .section { max-width: 100%; }
+            .scan-area { max-width: 100%; }
+            .done-area { max-width: 100%; }
+            .scan-btn-row { flex-direction: column; }
+            .scan-btn-row .scan-btn { flex: none; width: 100%; }
+            .map-action { padding: 0.75rem 0.85rem; gap: 0.6rem; flex-wrap: wrap; }
+            .map-btn { min-height: 44px; padding: 0.5rem 1rem; font-size: 0.68rem; }
+            .map-action-name { font-size: 0.78rem; }
+            .map-action-status { font-size: 0.62rem; }
+            .uuid-input-row { flex-direction: column; gap: 0.5rem; }
+            .uuid-add-btn { width: 100%; min-height: 44px; }
+            #mapPanel { max-width: 100%; }
+            .custom-uuid-section { max-width: 100%; }
+            .disconnect-btn { min-height: 36px; }
+        }
+
+        /* ── Connect view responsive: small phones ── */
+        @media (max-width: 480px) {
+            .scan-btn { font-size: 0.75rem; padding: 0.65rem 1rem; }
+            .map-icon { font-size: 1rem; width: 24px; }
+        }
     </style>
     <div class="page connect-page">
         <div class="brand-header">

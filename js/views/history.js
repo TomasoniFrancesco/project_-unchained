@@ -13,6 +13,11 @@ export async function mount(container) {
         .s-cadence .stat-val  { color: var(--color-cadence); }
         .s-speed .stat-val    { color: var(--color-speed); }
         .s-elev .stat-val     { color: var(--color-elevation); }
+
+        /* ── History responsive: phones ── */
+        @media (max-width: 640px) {
+            .activity-list { max-width: 100%; }
+        }
     </style>
     <div class="page">
         <div class="brand-header">

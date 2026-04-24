@@ -100,6 +100,93 @@ export function mount(container) {
         .modal-status .status-icon { font-size:2rem; display:block; margin-bottom:8px; }
         .power-trend { font-size:0.55em; vertical-align:super; margin-left:3px; opacity:0.65; }
         .power-trend.up { color:#EF4444; } .power-trend.down { color:var(--primary); }
+
+        /* ── Ride HUD responsive: phones ── */
+        @media (max-width: 640px) {
+            .top-bar { top:10px; left:12px; right:12px; gap:8px; flex-wrap:wrap; }
+            .top-left { gap:8px; }
+            .brand { font-size:0.55rem; letter-spacing:0.2em; }
+            .route-name-pill { padding:4px 10px; font-size:0.62rem; gap:6px; }
+            .top-actions { gap:6px; }
+            .action-btn { padding:8px 14px; font-size:0.68rem; min-height:44px; border-radius:10px; }
+            .center-hud { top:auto; bottom:190px; gap:4px; width:calc(100% - 24px); left:12px; transform:none; }
+            .timer-pill { padding:4px 16px; }
+            .timer-value { font-size:1.6rem; }
+            .main-metrics { padding:4px 6px; width:100%; justify-content:center; }
+            .metric-block { padding:3px 10px; }
+            .metric-block .val { font-size:1.8rem; }
+            .metric-block .icon { font-size:0.72rem; }
+            .metric-divider { height:24px; }
+            .sub-metrics { gap:12px; padding:4px 12px; justify-content:center; flex-wrap:wrap; }
+            .sub-item { font-size:0.72rem; }
+            .zone-bar { justify-content:center; }
+            .zone-segment { width:24px; height:4px; }
+            .right-hud { top:auto; right:auto; left:12px; bottom:270px; flex-direction:row; align-items:center; gap:6px; }
+            .gradient-pill { padding:6px 12px; }
+            .gradient-value { font-size:1.4rem; }
+            .gradient-label { font-size:0.48rem; }
+            .bottom-controls { flex-direction:column-reverse; align-items:stretch; gap:8px; padding:0 12px 8px; }
+            .bottom-left { flex-wrap:wrap; gap:6px; justify-content:center; }
+            .stat-mini { padding:6px 10px; }
+            .stat-mini .mini-val { font-size:0.9rem; }
+            .stat-mini .mini-label { font-size:0.42rem; }
+            .gear-block { padding:8px 14px; gap:12px; justify-content:center; }
+            .gear-number { font-size:2.4rem; }
+            .gear-arrow { width:48px; height:48px; border-radius:12px; font-size:1.2rem; }
+            .elev-strip { height:80px; }
+            .modal { padding:20px; }
+            .modal-title { font-size:1rem; }
+            .modal-option { padding:12px 14px; gap:10px; min-height:48px; }
+            .opt-label { font-size:0.78rem; }
+            .opt-desc { font-size:0.62rem; }
+        }
+
+        /* ── Ride HUD responsive: very small phones ── */
+        @media (max-width: 480px) {
+            .brand { display:none; }
+            .action-btn { padding:6px 12px; font-size:0.62rem; }
+            .center-hud { bottom:170px; }
+            .timer-value { font-size:1.3rem; }
+            .metric-block .val { font-size:1.5rem; }
+            .sub-item { font-size:0.65rem; }
+            .right-hud { bottom:240px; }
+            .gear-number { font-size:2rem; }
+            .elev-strip { height:65px; }
+        }
+
+        /* ── Ride HUD responsive: landscape ── */
+        @media (max-height: 500px) and (orientation: landscape) {
+            .top-bar { top:8px; left:12px; right:12px; }
+            .brand { font-size:0.5rem; }
+            .action-btn { padding:6px 12px; font-size:0.62rem; min-height:36px; }
+            .center-hud { top:8px; bottom:auto; width:auto; left:50%; transform:translateX(-50%); }
+            .timer-pill { padding:3px 14px; }
+            .timer-value { font-size:1.2rem; }
+            .main-metrics { padding:2px 6px; }
+            .metric-block .val { font-size:1.5rem; }
+            .metric-block { padding:2px 8px; }
+            .sub-metrics { gap:10px; padding:2px 10px; }
+            .sub-item { font-size:0.65rem; }
+            .zone-bar { padding:2px 6px; }
+            .zone-segment { width:20px; height:3px; }
+            .right-hud { top:60px; right:12px; bottom:auto; left:auto; flex-direction:column; align-items:flex-end; }
+            .gradient-value { font-size:1.3rem; }
+            .bottom-controls { padding:0 12px 4px; }
+            .bottom-left { gap:4px; }
+            .stat-mini { padding:4px 8px; }
+            .stat-mini .mini-val { font-size:0.8rem; }
+            .gear-block { padding:6px 12px; gap:8px; }
+            .gear-number { font-size:1.8rem; }
+            .gear-arrow { width:36px; height:36px; }
+            .elev-strip { height:60px; }
+        }
+
+        /* ── Touch-specific ride adjustments ── */
+        @media (hover: none) and (pointer: coarse) {
+            .action-btn { min-height:44px; }
+            .gear-arrow { min-width:48px; min-height:48px; }
+            .modal-option { min-height:48px; }
+        }
     </style>
     <div id="rideRoot">
         <canvas id="sceneCanvas"></canvas>
