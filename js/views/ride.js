@@ -512,6 +512,9 @@ export function mount(container) {
 
     // ── Helpers ──
     function getPowerZone(w){if(w<120)return'z1';if(w<170)return'z2';if(w<230)return'z3';if(w<300)return'z4';if(w<380)return'z5';return'z6';}
+    function estimateMaxHeartRate(){const age=Number(profile.age)||30;return Math.max(120,Math.min(220,208-0.7*age));}
+    function getHeartRateZone(hr){if(!hr||hr<=0)return null;const pct=hr/estimateMaxHeartRate();if(pct<0.60)return'z1';if(pct<0.70)return'z2';if(pct<0.80)return'z3';if(pct<0.90)return'z4';if(pct<0.95)return'z5';return'z6';}
+    function getTrainingZone(power, heartRate){return getHeartRateZone(heartRate)||getPowerZone(power);}
     function updateZoneBar(zone) {
         const zones=['z1','z2','z3','z4','z5','z6'];
         container.querySelectorAll('.zone-segment').forEach((seg,i)=>{seg.className='zone-segment';if(zones.indexOf(zone)>=i)seg.classList.add(zones[i]);if(zones[i]===zone)seg.classList.add('active');});
@@ -527,7 +530,7 @@ export function mount(container) {
         powerHistory.push(pw); if (powerHistory.length > 60) powerHistory.shift();
         sessionPowerSum += pw; sessionPowerCount += 1;
         const avgPw = sessionPowerCount > 0 ? sessionPowerSum / sessionPowerCount : 0;
-        const trend = getPowerTrend(); const zone = getPowerZone(pw);
+        const trend = getPowerTrend(); const zone = getTrainingZone(pw, d.heart_rate || 0);
 
         $('#power').innerHTML = pw + '<span class="power-trend ' + trend + '">' + (trend==='up'?'▲':trend==='down'?'▼':'') + '</span>';
         updateZoneBar(zone);

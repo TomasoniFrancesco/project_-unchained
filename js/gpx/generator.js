@@ -292,7 +292,10 @@ export function generateRoute(params) {
     // 6. Add noise
     elevations = addNoise(elevations);
 
-    // 7. Final clamp: ensure >= 0 and gradient within limits
+    // 7. Re-match target gain after noise
+    elevations = matchTargetGain(elevations, totalDistanceM, elevation_gain_m, max_gradient_percent, numPoints);
+
+    // 9. Final clamp: ensure >= 0 and gradient within limits
     const maxRise = segLen * (max_gradient_percent / 100);
     for (let i = 0; i < elevations.length; i++) {
         if (elevations[i] < 0) elevations[i] = 0;
@@ -304,7 +307,10 @@ export function generateRoute(params) {
         }
     }
 
-    // 8. Generate coordinates using spherical geometry so parsed distance
+    // 10. Re-check gain after the final gradient clamp.
+    elevations = matchTargetGain(elevations, totalDistanceM, elevation_gain_m, max_gradient_percent, numPoints);
+
+    // 11. Generate coordinates using spherical geometry so parsed distance
     // stays aligned with the requested route length.
     const startLat = 46.5;
     const startLon = 10.5;
