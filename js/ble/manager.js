@@ -589,6 +589,30 @@ async function writeRideOn(channel, label) {
     return false;
 }
 
+async function activateControllerChannels(slot, channels, label, attempt) {
+    const ctrl = controllerDevices[slot];
+    if (!ctrl.gattConnected || !channels.length) return;
+
+    console.log(`[BLE] ${label}: activation attempt ${attempt} on ${channels.length} writable channel(s)`);
+    for (const channel of channels) {
+        if (!controllerDevices[slot].gattConnected) return;
+        await writeRideOn(channel, label);
+    }
+}
+
+function scheduleControllerActivationRetries(slot, channels, label) {
+    const ctrl = controllerDevices[slot];
+    const deviceId = ctrl.id;
+
+    [250, 1000, 2500].forEach((waitMs, index) => {
+        setTimeout(() => {
+            const current = controllerDevices[slot];
+            if (current.id !== deviceId || !current.gattConnected) return;
+            activateControllerChannels(slot, channels, label, index + 2);
+        }, waitMs);
+    });
+}
+
 async function subscribeControllerChannels(slot, server, label) {
     let subscribed = false;
     const ctrl = controllers[slot];
@@ -661,9 +685,8 @@ async function subscribeControllerChannels(slot, server, label) {
             }
         }
 
-        for (const channel of selectedWritable) {
-            await writeRideOn(channel, label);
-        }
+        await activateControllerChannels(slot, selectedWritable, label, 1);
+        scheduleControllerActivationRetries(slot, selectedWritable, label);
     } catch (err) {
         console.warn(`[BLE] ${label}: discovery failed:`, err.message);
     }
