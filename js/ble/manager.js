@@ -545,6 +545,23 @@ function selectPreferredChannels(channels) {
     return viable.filter(channel => channel.score >= threshold);
 }
 
+function selectAllViableChannels(channels) {
+    return channels
+        .filter(channel => channel.score >= 0)
+        .sort((a, b) => b.score - a.score);
+}
+
+function formatChannelProperties(char) {
+    const props = char.properties;
+    return [
+        props.notify ? 'notify' : '',
+        props.indicate ? 'indicate' : '',
+        props.write ? 'write' : '',
+        props.writeWithoutResponse ? 'writeNoResp' : '',
+        props.read ? 'read' : '',
+    ].filter(Boolean).join('|') || 'none';
+}
+
 async function writeRideOn(channel, label) {
     const char = channel.characteristic;
     const payload = textEncoder.encode('RideOn');
@@ -608,11 +625,18 @@ async function subscribeControllerChannels(slot, server, label) {
             } catch (_) { /* skip inaccessible service */ }
         }
 
-        const selectedNotify = selectPreferredChannels(notifyChannels);
+        const selectedNotify = selectAllViableChannels(notifyChannels);
         const selectedWritable = selectPreferredChannels(writableChannels);
         ctrl.writableChannels = selectedWritable;
 
         console.log(`[BLE] ${label}: notify candidates=${notifyChannels.length}, selected=${selectedNotify.length}`);
+        for (const channel of notifyChannels) {
+            const selected = selectedNotify.includes(channel) ? 'selected' : 'ignored';
+            console.log(
+                `[BLE] ${label}: notify candidate ${shortUuid(channel.serviceUuid)} / ${shortUuid(channel.charUuid)} ` +
+                `score=${channel.score} props=${formatChannelProperties(channel.characteristic)} ${selected}`
+            );
+        }
 
         for (const channel of selectedNotify) {
             try {
