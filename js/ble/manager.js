@@ -833,7 +833,6 @@ function isTelemetryReport(bytes) {
 }
 
 function isLikelyStatusReport(bytes) {
-    if (bytes[0] === 0x2a) return true;
     if (bytes[0] === 0x19) return true;
     return false;
 }
@@ -865,6 +864,19 @@ function classifyControllerReport(bytes) {
             inputCandidate: false,
             learnCandidate: false,
             reason: 'status/config packet',
+            actions: [],
+        };
+    }
+
+    if (bytes[0] === 0x2a) {
+        return {
+            kind: 'raw',
+            classification: 'unknown',
+            stateSig: `raw:${bytes.join(',')}`,
+            active: true,
+            inputCandidate: false,
+            learnCandidate: true,
+            reason: '0x2a structured notification; learnable but not auto-verified',
             actions: [],
         };
     }
@@ -921,7 +933,7 @@ function handleControllerReport(report) {
     const duplicateState = previous.stateSig === parsed.stateSig;
     if (duplicateState && learnModeAction === null) return;
     if (duplicateState && learnModeAction !== null) {
-        if (!parsed.inputCandidate) {
+        if (!parsed.learnCandidate) {
             logLearnPacket({
                 deviceId,
                 slot,
@@ -937,7 +949,7 @@ function handleControllerReport(report) {
             }, 'ignored', 'repeated non-button notification');
             return;
         }
-        console.log(`[BLE] Learn mode saw repeated button state from ${label} ${shortUuid(charUuid)}: ${parsed.stateSig}`);
+        console.log(`[BLE] Learn mode saw repeated learnable state from ${label} ${shortUuid(charUuid)}: ${parsed.stateSig}`);
     }
 
     previous.stateSig = parsed.stateSig;
