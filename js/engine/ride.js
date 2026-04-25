@@ -12,7 +12,7 @@ import { CyclingSimulator } from './physics.js';
 import { GearSystem } from './gear.js';
 import { getSlopeAtDistance, getElevationAtDistance, computeSlopes, getTotalDistance } from '../gpx/parser.js';
 import * as bleManager from '../ble/manager.js';
-import { loadProfile, estimateCalories } from '../storage/profile.js';
+import { loadProfile, estimateCyclingCalories } from '../storage/profile.js';
 import { loadConfig } from '../storage/config.js';
 import { saveActivity } from '../storage/activities.js';
 import { buildGPX, downloadGPX } from '../gpx/export.js';
@@ -60,10 +60,14 @@ function newRideData() {
     return {
         power_samples: [],
         cadence_samples: [],
+        heart_rate_samples: [],
         speed_samples: [],
         max_power: 0,
         elevation_gain: 0,
         prev_elevation: 0,
+        calories_total: 0,
+        calories_active: 0,
+        calories_resting: 0,
         track_samples: [],
     };
 }
@@ -167,6 +171,7 @@ export function startRide(route) {
         gear: gears.getDisplayGear(),
         gear_offset: 0,
         calories: 0,
+        active_calories: 0,
     });
 
     if (routePoints.length) {
@@ -262,6 +267,7 @@ function rideLoop() {
     // ── 8. Record data samples (throttled to ~1 Hz) ──
     rideData.power_samples.push(power);
     rideData.cadence_samples.push(state.get('cadence'));
+    rideData.heart_rate_samples.push(state.get('heart_rate') || 0);
     rideData.speed_samples.push(simulator.speedKmh);
     rideData.max_power = Math.max(rideData.max_power, power);
     recordTrackSample(newDistance, elapsed);
@@ -277,11 +283,21 @@ function rideLoop() {
     const effectiveGrade = Math.round(applyStartupResistanceRamp(targetGrade, elapsed) * 100) / 100;
 
     // ── 10. Calories ──
-    let calories = 0;
-    if (elapsed > 0 && rideData.power_samples.length > 0) {
-        const avgPower = rideData.power_samples.reduce((a, b) => a + b, 0) / rideData.power_samples.length;
-        calories = estimateCalories(profile, avgPower, elapsed);
-    }
+    const calorieTick = estimateCyclingCalories(profile, {
+        powerW: power,
+        durationS: dt,
+        measuredPowerAvailable: state.get('trainer_status') === 'connected',
+        speedMs,
+        slopePct: smoothedSlope,
+        riderMass: simulator.riderMass,
+        bikeMass: simulator.bikeMass,
+        crr: simulator.crr,
+        cda: simulator.cda,
+        airDensity: simulator.airDensity,
+    });
+    rideData.calories_total += calorieTick.total;
+    rideData.calories_active += calorieTick.active;
+    rideData.calories_resting += calorieTick.resting;
 
     // ── 11. Batch state update ──
     state.update({
@@ -296,7 +312,8 @@ function rideLoop() {
         gear: gears.getDisplayGear(),
         gear_offset: Math.round(gearGradeOffset * 100) / 100,
         gear_ratio: gears.getRatio(),
-        calories,
+        calories: Math.round(rideData.calories_total),
+        active_calories: Math.round(rideData.calories_active),
     });
 
     // ── 12. Send effective grade to trainer via FTMS ──
@@ -376,6 +393,7 @@ export async function finalizeRide(mode) {
     const n = samples.length;
     const avgPower = samples.reduce((a, b) => a + b, 0) / n;
     const cadenceSamples = rideData.cadence_samples;
+    const hrSamples = rideData.heart_rate_samples.filter(hr => hr > 0);
     const speedSamples = rideData.speed_samples;
 
     // Build sparkline (max 100 points)
@@ -392,8 +410,13 @@ export async function finalizeRide(mode) {
         avg_power_w: avgPower,
         max_power_w: rideData.max_power,
         avg_cadence: cadenceSamples.length ? cadenceSamples.reduce((a, b) => a + b, 0) / cadenceSamples.length : 0,
+        avg_heart_rate_bpm: hrSamples.length ? hrSamples.reduce((a, b) => a + b, 0) / hrSamples.length : 0,
+        max_heart_rate_bpm: hrSamples.length ? Math.max(...hrSamples) : 0,
         avg_speed_kmh: speedSamples.length ? speedSamples.reduce((a, b) => a + b, 0) / speedSamples.length : 0,
         elevation_gain_m: rideData.elevation_gain,
+        calories_kcal: rideData.calories_total,
+        active_calories_kcal: rideData.calories_active,
+        resting_calories_kcal: rideData.calories_resting,
         power_samples: sparkline,
         track_samples: rideData.track_samples,
     };

@@ -12,6 +12,11 @@ class AppState extends EventTarget {
         scanning: false,
         scan_results: [],
 
+        // Heart rate monitor
+        heart_rate_status: 'disconnected',
+        heart_rate_name: '',
+        heart_rate: 0,
+
         // Controllers (2 slots)
         controller_1_status: 'disconnected',
         controller_1_name: '',
@@ -44,6 +49,7 @@ class AppState extends EventTarget {
         elevation: 0,
         elevation_gain: 0,
         calories: 0,
+        active_calories: 0,
         gear: 0,
         gear_offset: 0,
     };

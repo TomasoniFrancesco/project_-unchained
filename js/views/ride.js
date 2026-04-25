@@ -47,7 +47,7 @@ export function mount(container) {
         .metric-block .icon { font-size:0.85rem; opacity:0.6; }
         .metric-block .val { font-size:2.6rem; font-weight:900; letter-spacing:-0.03em; font-variant-numeric:tabular-nums; line-height:1; text-shadow:0 2px 16px rgba(0,0,0,0.4); }
         .metric-divider { width:1px; height:32px; background:rgba(255,255,255,0.12); }
-        .power-val { color:var(--color-power); } .cadence-val { color:var(--color-cadence); }
+        .power-val { color:var(--color-power); } .cadence-val { color:var(--color-cadence); } .hr-val { color:var(--color-hr); }
         .sub-metrics { display:flex; align-items:center; gap:20px; padding:6px 20px; }
         .sub-item { display:flex; align-items:baseline; gap:5px; font-size:0.8rem; font-weight:600; color:rgba(255,255,255,0.7); }
         .sub-item .sub-val { font-variant-numeric:tabular-nums; color:#fff; }
@@ -207,6 +207,8 @@ export function mount(container) {
                     <div class="metric-block"><span class="icon">⚡</span><span class="val power-val" id="power">0</span></div>
                     <div class="metric-divider"></div>
                     <div class="metric-block"><span class="icon">⟳</span><span class="val cadence-val" id="cadence">0</span></div>
+                    <div class="metric-divider"></div>
+                    <div class="metric-block"><span class="icon">♥</span><span class="val hr-val" id="heartRate">--</span></div>
                 </div>
                 <div class="sub-metrics pill-sm">
                     <div class="sub-item"><span class="sub-val" id="speed">0.0</span><span class="sub-unit">km/h</span></div>
@@ -532,6 +534,7 @@ export function mount(container) {
         targetDistance = d.distance || 0;
         $('#speed').textContent = (d.speed || 0).toFixed(1);
         $('#cadence').textContent = d.cadence || 0;
+        $('#heartRate').textContent = d.heart_rate ? Math.round(d.heart_rate) : '--';
         $('#elapsed').textContent = fmt(d.elapsed || 0);
         $('#distanceKm').textContent = ((d.distance||0)/1000).toFixed(2);
         $('#totalDist').textContent = ((d.distance||0)/1000).toFixed(2);

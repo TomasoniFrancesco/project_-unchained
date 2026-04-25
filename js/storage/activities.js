@@ -40,8 +40,13 @@ export async function saveActivity(data) {
         avg_power_w: Math.round((data.avg_power_w || 0) * 10) / 10,
         max_power_w: Math.round(data.max_power_w || 0),
         avg_cadence: Math.round((data.avg_cadence || 0) * 10) / 10,
+        avg_heart_rate_bpm: Math.round(data.avg_heart_rate_bpm || 0),
+        max_heart_rate_bpm: Math.round(data.max_heart_rate_bpm || 0),
         avg_speed_kmh: Math.round((data.avg_speed_kmh || 0) * 10) / 10,
         elevation_gain_m: Math.round((data.elevation_gain_m || 0) * 10) / 10,
+        calories_kcal: Math.round((data.calories_kcal || 0) * 10) / 10,
+        active_calories_kcal: Math.round((data.active_calories_kcal || 0) * 10) / 10,
+        resting_calories_kcal: Math.round((data.resting_calories_kcal || 0) * 10) / 10,
         power_samples: data.power_samples || [],
         track_samples: data.track_samples || [],
     };

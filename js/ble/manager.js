@@ -42,6 +42,8 @@ const BATTERY_SERVICE          = uuid16('180f');
 const BATTERY_LEVEL_CHAR       = uuid16('2a19');
 const DEVICE_NAME_CHAR         = uuid16('2a00');
 const APPEARANCE_CHAR          = uuid16('2a01');
+const HEART_RATE_SERVICE       = uuid16('180d');
+const HEART_RATE_MEASUREMENT   = uuid16('2a37');
 
 const IGNORED_CONTROLLER_SERVICES = new Set([
     GENERIC_ACCESS_SERVICE,
@@ -103,6 +105,12 @@ let trainerServer       = null;
 let trainerControlPoint = null;
 let bikeDataChar        = null;
 let onTrainerData       = null;
+
+// ── Heart rate monitor state ──────────────────────────────────────
+let heartRateDevice = null;
+let heartRateServer = null;
+let heartRateChar = null;
+let heartRateListener = null;
 
 // ── Controllers state (2 slots) ───────────────────────────────────
 // Status FSM: disconnected → scanning → connecting → verifying → ready | degraded
@@ -424,6 +432,134 @@ export function disconnectTrainer() {
     if (trainerServer && trainerServer.connected) trainerServer.disconnect();
     trainerServer = null; trainerControlPoint = null;
     bikeDataChar  = null; trainerDevice = null;
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  HEART RATE MONITOR
+// ══════════════════════════════════════════════════════════════════
+
+function parseHeartRateMeasurement(dataView) {
+    if (!dataView || dataView.byteLength < 2) return null;
+
+    const flags = dataView.getUint8(0);
+    const isUint16 = (flags & 0x01) !== 0;
+    const bpm = isUint16
+        ? (dataView.byteLength >= 3 ? dataView.getUint16(1, true) : null)
+        : dataView.getUint8(1);
+
+    if (!Number.isFinite(bpm) || bpm <= 0 || bpm > 255) return null;
+
+    let offset = isUint16 ? 3 : 2;
+    let contactDetected = null;
+    if (flags & 0x04) contactDetected = (flags & 0x02) !== 0;
+
+    let energyExpendedKj = null;
+    if (flags & 0x08 && dataView.byteLength >= offset + 2) {
+        energyExpendedKj = dataView.getUint16(offset, true);
+        offset += 2;
+    }
+
+    const rrIntervalsMs = [];
+    if (flags & 0x10) {
+        while (dataView.byteLength >= offset + 2) {
+            rrIntervalsMs.push(Math.round((dataView.getUint16(offset, true) / 1024) * 1000));
+            offset += 2;
+        }
+    }
+
+    return { bpm, contactDetected, energyExpendedKj, rrIntervalsMs };
+}
+
+export async function scanAndConnectHeartRate() {
+    state.set('scanning', true);
+    state.set('heart_rate_status', 'scanning');
+
+    try {
+        const device = await navigator.bluetooth.requestDevice({
+            filters: [{ services: [HEART_RATE_SERVICE] }],
+            optionalServices: [BATTERY_SERVICE, DEVICE_INFO_SERVICE],
+        });
+
+        heartRateDevice = device;
+        state.update({
+            scanning: false,
+            heart_rate_name: device.name || 'Heart Rate Monitor',
+            heart_rate_status: 'connecting',
+        });
+
+        console.log(`[BLE] Heart rate monitor selected: ${device.name}`);
+
+        device.addEventListener('gattserverdisconnected', () => {
+            console.log('[BLE] Heart rate monitor disconnected');
+            heartRateServer = null;
+            heartRateChar = null;
+            heartRateListener = null;
+            heartRateDevice = null;
+            state.update({
+                heart_rate_status: 'disconnected',
+                heart_rate_name: '',
+                heart_rate: 0,
+            });
+        });
+
+        heartRateServer = await device.gatt.connect();
+        console.log('[BLE] Heart rate monitor GATT connected');
+
+        const service = await heartRateServer.getPrimaryService(HEART_RATE_SERVICE);
+        heartRateChar = await service.getCharacteristic(HEART_RATE_MEASUREMENT);
+        heartRateListener = (event) => {
+            const parsed = parseHeartRateMeasurement(event.target.value);
+            if (!parsed) {
+                console.warn('[BLE] Ignored invalid heart rate measurement');
+                return;
+            }
+
+            state.update({
+                heart_rate: parsed.bpm,
+                heart_rate_status: 'connected',
+            });
+            console.log(`[BLE] Heart rate: ${parsed.bpm} bpm`);
+        };
+
+        await heartRateChar.startNotifications();
+        heartRateChar.addEventListener('characteristicvaluechanged', heartRateListener);
+
+        state.set('heart_rate_status', 'connected');
+        console.log('[BLE] Heart rate monitor connected');
+        return device;
+    } catch (err) {
+        state.set('scanning', false);
+        state.update({ heart_rate_status: 'disconnected', heart_rate: 0 });
+        if (err.name === 'NotFoundError') {
+            console.log('[BLE] Heart rate monitor selection cancelled');
+        } else {
+            console.error('[BLE] Heart rate monitor connection failed:', err);
+        }
+        return null;
+    }
+}
+
+export function isHeartRateConnected() {
+    return heartRateServer !== null && heartRateServer.connected;
+}
+
+export function disconnectHeartRate() {
+    if (heartRateChar && heartRateListener) {
+        try {
+            heartRateChar.removeEventListener('characteristicvaluechanged', heartRateListener);
+        } catch (_) { /* noop */ }
+    }
+
+    if (heartRateServer && heartRateServer.connected) heartRateServer.disconnect();
+    heartRateDevice = null;
+    heartRateServer = null;
+    heartRateChar = null;
+    heartRateListener = null;
+    state.update({
+        heart_rate_status: 'disconnected',
+        heart_rate_name: '',
+        heart_rate: 0,
+    });
 }
 
 // ══════════════════════════════════════════════════════════════════

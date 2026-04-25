@@ -11,6 +11,7 @@ export async function mount(container) {
         .s-distance .stat-val { color: var(--color-distance); }
         .s-power .stat-val    { color: var(--color-power); }
         .s-cadence .stat-val  { color: var(--color-cadence); }
+        .s-hr .stat-val       { color: var(--color-hr); }
         .s-speed .stat-val    { color: var(--color-speed); }
         .s-elev .stat-val     { color: var(--color-elevation); }
 
@@ -52,6 +53,7 @@ export async function mount(container) {
                     <div class="stat s-distance"><div class="stat-val">${(act.distance_m / 1000).toFixed(2)}</div><div class="stat-label">km</div></div>
                     <div class="stat s-power"><div class="stat-val">${Math.round(act.avg_power_w)}</div><div class="stat-label">Avg W</div></div>
                     <div class="stat s-cadence"><div class="stat-val">${Math.round(act.avg_cadence)}</div><div class="stat-label">RPM</div></div>
+                    <div class="stat s-hr"><div class="stat-val">${act.avg_heart_rate_bpm ? Math.round(act.avg_heart_rate_bpm) : '--'}</div><div class="stat-label">BPM</div></div>
                     <div class="stat s-speed"><div class="stat-val">${act.avg_speed_kmh.toFixed(1)}</div><div class="stat-label">km/h</div></div>
                     <div class="stat s-elev"><div class="stat-val">${Math.round(act.elevation_gain_m)}</div><div class="stat-label">Elev ↑</div></div>
                 </div>

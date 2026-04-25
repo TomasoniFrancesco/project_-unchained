@@ -3,6 +3,7 @@
  */
 import {
     scanAndConnectTrainer,
+    scanAndConnectHeartRate,
     scanAndConnectController,
     isWebBluetoothAvailable,
     loadControllerMap,
@@ -13,6 +14,7 @@ import {
     getControllerInfo,
     getVirtualControllerInfo,
     setControllerAssignment,
+    disconnectHeartRate,
     disconnectController,
     loadCustomServiceUUIDs,
     addCustomServiceUUID,
@@ -143,6 +145,15 @@ export function mount(container) {
             </button>
         </div>
 
+        <div class="scan-area stagger-2">
+            <div class="scan-section-label">❤ Heart Rate Monitor</div>
+            <button class="scan-btn scan-btn-secondary" id="scanHrBtn">
+                <div class="scan-spinner" id="scanHrSpinner"></div>
+                <span id="scanHrLabel">Connect HR Monitor</span>
+            </button>
+            <div class="scan-helper">Use a BLE chest strap or enable heart-rate broadcast on a compatible Garmin watch.</div>
+        </div>
+
         <div class="scan-area stagger-3">
             <div class="scan-section-label">🎮 Remote Controllers (up to 2)</div>
             <button class="scan-btn" id="scanCtrlBtn">
@@ -200,6 +211,16 @@ export function mount(container) {
         const device = await scanAndConnectTrainer();
         btn.classList.remove('scanning'); spinner.style.display = 'none';
         label.textContent = device ? 'Scan for another trainer' : 'Scan for Bluetooth Trainer';
+        updateConnectedUI();
+    };
+
+    // ── Heart-rate scan ──
+    $('#scanHrBtn').onclick = async () => {
+        const btn = $('#scanHrBtn'), spinner = $('#scanHrSpinner'), label = $('#scanHrLabel');
+        btn.classList.add('scanning'); spinner.style.display = 'block'; label.textContent = 'Select your HR monitor…';
+        const device = await scanAndConnectHeartRate();
+        btn.classList.remove('scanning'); spinner.style.display = 'none';
+        label.textContent = device ? 'Connect another HR monitor' : 'Connect HR Monitor';
         updateConnectedUI();
     };
 
@@ -319,6 +340,14 @@ export function mount(container) {
             const statusText = trStatus === 'connected' ? 'Connected ✓' : 'Connecting…';
             rows.push(`<div class="card device-row"><div class="device-dot ${dotClass}"></div><div style="flex:1;min-width:0;"><div class="device-name">${trName || 'Smart Trainer'}</div><div class="device-meta">${statusText}</div></div><span class="type-badge trainer">trainer</span></div>`);
         }
+        const hrStatus = state.get('heart_rate_status'), hrName = state.get('heart_rate_name'), bpm = state.get('heart_rate');
+        if (hrStatus === 'connected' || hrStatus === 'connecting' || hrStatus === 'scanning') {
+            const dotClass = hrStatus === 'connected' ? 'connected' : 'connecting';
+            const statusText = hrStatus === 'connected'
+                ? `Connected ✓${bpm ? ` ${bpm} bpm` : ''}`
+                : hrStatus === 'scanning' ? 'Scanning…' : 'Connecting…';
+            rows.push(`<div class="card device-row"><div class="device-dot ${dotClass}"></div><div style="flex:1;min-width:0;"><div class="device-name">${hrName || 'Heart Rate Monitor'}</div><div class="device-meta">${statusText}</div></div><span class="type-badge controller">hr</span><button class="disconnect-btn" data-hr="1">✕</button></div>`);
+        }
         for (let slot = 0; slot < 2; slot++) {
             const info = getControllerInfo(slot);
             const cStatus = info.status;
@@ -363,6 +392,11 @@ export function mount(container) {
         // Bind disconnect buttons
         list.querySelectorAll('.disconnect-btn').forEach(btn => {
             btn.onclick = () => {
+                if (btn.dataset.hr) {
+                    disconnectHeartRate();
+                    updateConnectedUI();
+                    return;
+                }
                 disconnectController(parseInt(btn.dataset.slot)); updateConnectedUI(); updateSlotsInfo();
                 const anyActive = [0, 1].some(s => getControllerInfo(s).status !== 'disconnected');
                 if (!anyActive) $('#mapPanel').style.display = 'none';
