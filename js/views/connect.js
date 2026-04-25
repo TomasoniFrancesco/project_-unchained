@@ -11,6 +11,8 @@ import {
     cancelLearnMode,
     isLearning,
     getControllerInfo,
+    getVirtualControllerInfo,
+    setControllerAssignment,
     disconnectController,
     loadCustomServiceUUIDs,
     addCustomServiceUUID,
@@ -77,6 +79,20 @@ export function mount(container) {
         .disconnect-btn:hover { color: #EF4444; border-color: rgba(239,68,68,0.6); background: rgba(239,68,68,0.08); }
         .device-submeta { font-size: 0.6rem; color: var(--text-muted); margin-top: 0.18rem; }
         .device-warning { color: #F59E0B; }
+        .virtual-controller { margin-top: 0.6rem; padding: 0.8rem 1rem; border-radius: var(--radius-md); border: 1px solid var(--border); background: rgba(255,255,255,0.035); }
+        .virtual-controller-top { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-bottom: 0.5rem; }
+        .virtual-controller-title { font-size: 0.72rem; font-weight: 800; color: var(--text); }
+        .virtual-controller-status { font-size: 0.6rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); }
+        .virtual-controller-status.ready { color: var(--primary); }
+        .virtual-controller-status.partial { color: var(--accent); }
+        .virtual-controller-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.4rem; }
+        .virtual-side { min-width: 0; padding: 0.5rem; border-radius: var(--radius-sm); background: rgba(255,255,255,0.035); border: 1px solid rgba(255,255,255,0.06); }
+        .virtual-side-label { font-size: 0.54rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted); margin-bottom: 0.18rem; }
+        .virtual-side-name { font-size: 0.64rem; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .side-selector { display: flex; gap: 0.25rem; margin-top: 0.45rem; flex-wrap: wrap; }
+        .side-btn { font-family: inherit; font-size: 0.56rem; font-weight: 700; padding: 0.22rem 0.45rem; border-radius: var(--radius-sm); border: 1px solid var(--border); background: transparent; color: var(--text-muted); cursor: pointer; transition: all 0.15s; }
+        .side-btn:hover { border-color: var(--border-focus); color: var(--text-secondary); }
+        .side-btn.active { border-color: var(--primary); background: var(--primary-dim); color: var(--primary); }
 
         /* ── Connect view responsive: phones ── */
         @media (max-width: 640px) {
@@ -94,6 +110,8 @@ export function mount(container) {
             #mapPanel { max-width: 100%; }
             .custom-uuid-section { max-width: 100%; }
             .disconnect-btn { min-height: 36px; }
+            .virtual-controller-grid { grid-template-columns: 1fr; }
+            .side-btn { min-height: 32px; }
         }
 
         /* ── Connect view responsive: small phones ── */
@@ -114,6 +132,7 @@ export function mount(container) {
         <div class="section stagger-1" style="max-width:640px;">
             <div class="section-title">Connected Devices</div>
             <div class="connected-list" id="connectedList"><div class="empty-connected">No devices connected yet</div></div>
+            <div id="virtualControllerPanel"></div>
         </div>
 
         <div class="scan-area stagger-2">
@@ -326,10 +345,10 @@ export function mount(container) {
                     : '<span style="color:#EF4444;font-size:0.55rem;"> ○ GATT lost</span>';
 
                 const shortId = info.id ? info.id.slice(-8).toUpperCase() : '';
-                const idLine = shortId ? `<div class="device-submeta">Device ID ${shortId} • Slot ${slot + 1}${gattTag}</div>` : `<div class="device-submeta">Slot ${slot + 1}${gattTag}</div>`;
+                const idLine = shortId ? `<div class="device-submeta">Device ID ${shortId} • Slot ${slot + 1} • ${assignmentLabel(info.assignment)}${gattTag}</div>` : `<div class="device-submeta">Slot ${slot + 1} • ${assignmentLabel(info.assignment)}${gattTag}</div>`;
                 const issueClass = info.inputReady ? 'device-submeta' : 'device-submeta device-warning';
                 const issueLine = info.issue ? `<div class="${issueClass}">${info.issue}</div>` : '';
-                rows.push(`<div class="card device-row"><div class="device-dot ${dotClass}"></div><div style="flex:1;min-width:0;"><div class="device-name">${cName || 'Controller ' + (slot+1)}</div><div class="device-meta">${statusText}</div>${idLine}${issueLine}</div><span class="type-badge controller">controller</span><button class="disconnect-btn" data-slot="${slot}">✕</button></div>`);
+                rows.push(`<div class="card device-row"><div class="device-dot ${dotClass}"></div><div style="flex:1;min-width:0;"><div class="device-name">${cName || 'Controller ' + (slot+1)}</div><div class="device-meta">${statusText}</div>${idLine}${issueLine}${renderSideSelector(slot, info.assignment)}</div><span class="type-badge controller">controller</span><button class="disconnect-btn" data-slot="${slot}">✕</button></div>`);
             }
         }
         const anyControllerActive = [0, 1].some(s => {
@@ -340,6 +359,7 @@ export function mount(container) {
             $('#mapPanel').style.display = 'block'; refreshMapUI();
         }
         list.innerHTML = rows.length ? rows.join('') : '<div class="empty-connected">No devices connected yet</div>';
+        renderVirtualControllerPanel();
         // Bind disconnect buttons
         list.querySelectorAll('.disconnect-btn').forEach(btn => {
             btn.onclick = () => {
@@ -348,6 +368,71 @@ export function mount(container) {
                 if (!anyActive) $('#mapPanel').style.display = 'none';
             };
         });
+        list.querySelectorAll('.side-btn').forEach(btn => {
+            btn.onclick = () => {
+                const slot = parseInt(btn.dataset.slot);
+                setControllerAssignment(slot, btn.dataset.assignment);
+                updateConnectedUI();
+                updateSlotsInfo();
+            };
+        });
+    }
+
+    function assignmentLabel(assignment) {
+        if (assignment === 'left') return 'Left';
+        if (assignment === 'right') return 'Right';
+        return 'Standalone';
+    }
+
+    function escapeHtml(value) {
+        return String(value || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    function renderSideSelector(slot, assignment) {
+        const options = [
+            ['left', 'Left'],
+            ['right', 'Right'],
+            ['standalone', 'Solo'],
+        ];
+        const buttons = options.map(([value, label]) => {
+            const active = assignment === value ? ' active' : '';
+            return `<button class="side-btn${active}" data-slot="${slot}" data-assignment="${value}">${label}</button>`;
+        }).join('');
+        return `<div class="side-selector">${buttons}</div>`;
+    }
+
+    function renderVirtualControllerPanel() {
+        const panel = $('#virtualControllerPanel');
+        const vc = getVirtualControllerInfo();
+        if (!vc.devices.length) {
+            panel.innerHTML = '';
+            return;
+        }
+
+        const status = vc.status === 'ready' ? 'ready' : 'partial';
+        const leftName = escapeHtml(vc.left?.name || 'Not assigned');
+        const rightName = escapeHtml(vc.right?.name || 'Not assigned');
+        const standaloneName = vc.standalone.length
+            ? escapeHtml(vc.standalone.map(d => d.name || `Slot ${d.slot + 1}`).join(', '))
+            : 'None';
+
+        panel.innerHTML = `
+            <div class="virtual-controller">
+                <div class="virtual-controller-top">
+                    <div class="virtual-controller-title">Virtual Controller</div>
+                    <div class="virtual-controller-status ${status}">${status}</div>
+                </div>
+                <div class="virtual-controller-grid">
+                    <div class="virtual-side"><div class="virtual-side-label">Left</div><div class="virtual-side-name">${leftName}</div></div>
+                    <div class="virtual-side"><div class="virtual-side-label">Right</div><div class="virtual-side-name">${rightName}</div></div>
+                    <div class="virtual-side"><div class="virtual-side-label">Standalone</div><div class="virtual-side-name">${standaloneName}</div></div>
+                </div>
+            </div>`;
     }
 
     // Initial state

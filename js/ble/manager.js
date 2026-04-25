@@ -17,6 +17,8 @@ import {
     stopWorkout,
     setSimulationParams,
 } from './ftms.js';
+import { ControllerDevice } from './controller-device.js';
+import { virtualController } from '../controllers/virtual-controller.js';
 
 // ── BLE Service UUIDs ──────────────────────────────────────────────
 // NOTE: HID Service (0x1812) is BLOCKLISTED by Chrome's Web Bluetooth.
@@ -108,6 +110,7 @@ const controllers = [
     { device: null, server: null, id: '', name: '', status: 'disconnected', subscriptions: [], writableChannels: [], inputReady: false, issue: '', heartbeatId: null },
     { device: null, server: null, id: '', name: '', status: 'disconnected', subscriptions: [], writableChannels: [], inputReady: false, issue: '', heartbeatId: null },
 ];
+const controllerDevices = controllers.map((ctrl, slot) => new ControllerDevice(slot, ctrl));
 
 // Slot mutex — prevents concurrent allocation races
 const slotLocked = [false, false];
@@ -120,6 +123,11 @@ let learnModeBaselines = new Map();
 
 const LEARN_BASELINE_WINDOW_MS = 350;
 
+// ── Normalized controller reports ─────────────────────────────────
+// Keeps the current 2-slot model, but routes reports through a small
+// event target so aggregation can subscribe here.
+const controllerReportEvents = new EventTarget();
+
 // ── Controller action callbacks (set by ride.html) ─────────────────
 const controllerCallbacks = {
     gearUp:   null,
@@ -130,6 +138,22 @@ const controllerCallbacks = {
 export function setControllerCallbacks(cb) {
     Object.assign(controllerCallbacks, cb);
 }
+
+export function addControllerReportListener(listener) {
+    controllerReportEvents.addEventListener('controllerreport', listener);
+}
+
+export function removeControllerReportListener(listener) {
+    controllerReportEvents.removeEventListener('controllerreport', listener);
+}
+
+function emitControllerReportEvent(detail) {
+    controllerReportEvents.dispatchEvent(new CustomEvent('controllerreport', { detail }));
+}
+
+controllerReportEvents.addEventListener('controllerreport', (event) => {
+    dispatchControllerAction(event.detail);
+});
 
 // ══════════════════════════════════════════════════════════════════
 //  BUTTON MAP
@@ -162,6 +186,10 @@ function shortUuid(uuid) {
 function mappingsEqual(a, b) {
     if (!arraysEqual(a?.bytes || [], b?.bytes || [])) return false;
 
+    const aDeviceId = a?.deviceId || '';
+    const bDeviceId = b?.deviceId || '';
+    if (aDeviceId && bDeviceId && aDeviceId !== bDeviceId) return false;
+
     const aHasSource = !!(a?.serviceUuid || a?.charUuid);
     const bHasSource = !!(b?.serviceUuid || b?.charUuid);
     if (!aHasSource || !bHasSource) return true;
@@ -173,6 +201,9 @@ function mappingsEqual(a, b) {
 export function saveButtonMapping(action, bytes, source = null) {
     const map = loadControllerMap();
     const nextMapping = {
+        action,
+        ...(source?.deviceId ? { deviceId: source.deviceId } : {}),
+        ...(source?.assignment ? { assignment: source.assignment } : {}),
         bytes: Array.from(bytes),
         ...(source?.serviceUuid ? { serviceUuid: normalizeUuid(source.serviceUuid) } : {}),
         ...(source?.charUuid ? { charUuid: normalizeUuid(source.charUuid) } : {}),
@@ -187,7 +218,8 @@ export function saveButtonMapping(action, bytes, source = null) {
 
     map[action] = nextMapping;
     localStorage.setItem(MAP_KEY, JSON.stringify(map));
-    console.log(`[BLE] Saved mapping: ${action} → [${bytes.join(', ')}] (${shortUuid(nextMapping.serviceUuid)} / ${shortUuid(nextMapping.charUuid)})`);
+    const deviceTag = nextMapping.deviceId ? `${String(nextMapping.deviceId).slice(-8)} / ` : '';
+    console.log(`[BLE] Saved mapping: ${action} → [${bytes.join(', ')}] (${deviceTag}${shortUuid(nextMapping.serviceUuid)} / ${shortUuid(nextMapping.charUuid)})`);
     return { ok: true, mapping: nextMapping };
 }
 
@@ -406,14 +438,16 @@ function findFreeSlot() {
 }
 
 function syncControllerState(slot) {
-    const c = controllers[slot];
+    const c = controllerDevices[slot];
     const n = slot + 1;
+    const assignment = virtualController.getAssignment(c.id, c.name);
     state.update({
         [`controller_${n}_status`]: c.status,
         [`controller_${n}_name`]:   c.name,
         [`controller_${n}_input_ready`]: !!c.inputReady,
         [`controller_${n}_issue`]: c.issue || '',
-        [`controller_${n}_gatt_connected`]: !!(c.server && c.server.connected),
+        [`controller_${n}_gatt_connected`]: c.gattConnected,
+        [`controller_${n}_assignment`]: assignment,
     });
 }
 
@@ -424,23 +458,23 @@ function syncControllerState(slot) {
 function startHeartbeat(slot) {
     stopHeartbeat(slot);
     const n = slot + 1;
-    controllers[slot].heartbeatId = setInterval(() => {
-        const ctrl = controllers[slot];
-        const gattAlive = ctrl.server && ctrl.server.connected;
+    controllerDevices[slot].setHeartbeat(setInterval(() => {
+        const ctrl = controllerDevices[slot];
+        const gattAlive = ctrl.gattConnected;
         if (!gattAlive && ctrl.status !== 'disconnected') {
             console.warn(`[BLE] Controller ${n}: heartbeat detected silent disconnect`);
             resetControllerSlot(slot);
         }
         // Always re-sync so UI reflects true GATT state
         syncControllerState(slot);
-    }, 2000);
+    }, 2000));
 }
 
 function stopHeartbeat(slot) {
-    const ctrl = controllers[slot];
+    const ctrl = controllerDevices[slot];
     if (ctrl.heartbeatId) {
         clearInterval(ctrl.heartbeatId);
-        ctrl.heartbeatId = null;
+        ctrl.clearHeartbeat();
     }
 }
 
@@ -448,48 +482,21 @@ function stopHeartbeat(slot) {
  * Tear down notification subscriptions and writable channels for a slot.
  */
 function clearControllerRuntime(slot) {
-    const ctrl = controllers[slot];
-
-    for (const sub of ctrl.subscriptions) {
-        try {
-            sub.characteristic.removeEventListener('characteristicvaluechanged', sub.listener);
-        } catch (_) { /* noop */ }
-    }
-
-    ctrl.subscriptions = [];
-    ctrl.writableChannels = [];
-    ctrl.inputReady = false;
-
-    for (const key of Array.from(reportStates.keys())) {
-        if (key.startsWith(`${slot}|`)) reportStates.delete(key);
-    }
+    controllerDevices[slot].clearRuntime(reportStates);
 }
 
 function resetControllerSlot(slot) {
     stopHeartbeat(slot);
-    const ctrl = controllers[slot];
-    clearControllerRuntime(slot);
-    // Disconnect GATT if still alive
-    try {
-        if (ctrl.server && ctrl.server.connected) ctrl.server.disconnect();
-    } catch (_) { /* noop */ }
-    ctrl.server = null;
-    ctrl.device = null;
-    ctrl.id = '';
-    ctrl.name = '';
-    ctrl.status = 'disconnected';
-    ctrl.issue = '';
-    ctrl.heartbeatId = null;
+    controllerDevices[slot].reset(reportStates);
     slotLocked[slot] = false;
     syncControllerState(slot);
 }
 
 function markControllerInputReady(slot, charUuid) {
-    const ctrl = controllers[slot];
+    const ctrl = controllerDevices[slot];
     if (ctrl.inputReady && String(ctrl.issue || '').startsWith('Input verified via')) return;
 
-    ctrl.inputReady = true;
-    ctrl.issue = `Input verified via ${shortUuid(charUuid)}`;
+    ctrl.setInputReady(`Input verified via ${shortUuid(charUuid)}`);
     syncControllerState(slot);
 }
 
@@ -498,7 +505,7 @@ function findExistingControllerSlotByDeviceId(deviceId, ignoreSlot = -1) {
 
     for (let i = 0; i < controllers.length; i++) {
         if (i === ignoreSlot) continue;
-        const ctrl = controllers[i];
+        const ctrl = controllerDevices[i];
         if (ctrl.id === deviceId && ctrl.status !== 'disconnected') return i;
     }
 
@@ -654,9 +661,8 @@ export async function scanAndConnectController() {
     const n = slot + 1;
     slotLocked[slot] = true;
 
-    const ctrl = controllers[slot];
-    ctrl.status = 'scanning';
-    ctrl.issue  = '';
+    const ctrl = controllerDevices[slot];
+    ctrl.setStatus('scanning', '');
     syncControllerState(slot);
 
     try {
@@ -696,11 +702,8 @@ export async function scanAndConnectController() {
             return { device, duplicateOf: existingSlot };
         }
 
-        ctrl.device = device;
-        ctrl.id     = device.id || '';
-        ctrl.name   = device.name || `Controller ${n}`;
-        ctrl.status = 'connecting';
-        ctrl.issue  = 'Establishing GATT connection…';
+        ctrl.hydrate(device, `Controller ${n}`);
+        ctrl.setStatus('connecting', 'Establishing GATT connection…');
         syncControllerState(slot);
 
         console.log(`[BLE] Controller ${n} selected: ${device.name}`);
@@ -712,34 +715,30 @@ export async function scanAndConnectController() {
         });
 
         // ── GATT connect ──
-        ctrl.server = await device.gatt.connect();
+        ctrl.attachServer(await device.gatt.connect());
         console.log(`[BLE] Controller ${n} GATT connected`);
 
         // Immediate GATT sanity check
-        if (!ctrl.server.connected) {
+        if (!ctrl.gattConnected) {
             console.warn(`[BLE] Controller ${n}: server.connected is false right after connect()`);
-            ctrl.issue = 'GATT connection failed immediately.';
             slotLocked[slot] = false;
             resetControllerSlot(slot);
             return null;
         }
 
         // ── Verifying phase: discover services & subscribe ──
-        ctrl.status = 'verifying';
-        ctrl.issue  = 'GATT connected. Discovering services…';
+        ctrl.setStatus('verifying', 'GATT connected. Discovering services…');
         syncControllerState(slot);
 
         const subscribed = await subscribeControllerChannels(slot, ctrl.server, `Controller ${n}`);
 
         if (!subscribed) {
             console.warn(`[BLE] Controller ${n}: no notifiable characteristics — buttons won't work.`);
-            ctrl.status = 'degraded';
-            ctrl.issue  = 'Connected but no button channel detected. Buttons won\'t work.';
-            ctrl.inputReady = false;
+            ctrl.setStatus('degraded', 'Connected but no button channel detected. Buttons won\'t work.');
+            ctrl.setInputReadyState(false);
         } else {
-            ctrl.status = 'ready';
-            ctrl.issue  = 'Connected. Press any button to verify input.';
-            ctrl.inputReady = false;
+            ctrl.setStatus('ready', 'Connected. Press any button to verify input.');
+            ctrl.setInputReadyState(false);
         }
 
         syncControllerState(slot);
@@ -768,7 +767,7 @@ export async function scanAndConnectController() {
 // ══════════════════════════════════════════════════════════════════
 
 const reportStates = new Map(); // keyed by slot/service/char for edge detection
-const actionCooldowns = {};     // debounce: { action: lastFireTime }
+const actionCooldowns = {};     // debounce: { device/source/action: lastFireTime }
 const COOLDOWN_MS = 400;        // minimum ms between same action fires
 
 function decodeZwiftButtons(bytes) {
@@ -847,30 +846,12 @@ function classifyControllerReport(bytes) {
     };
 }
 
-function mappingMatches(mapping, report) {
-    if (!mapping) return false;
-
-    if (mapping.bytes && !arraysEqual(mapping.bytes, report.bytes)) {
-        return false;
-    }
-    if (mapping.serviceUuid && normalizeUuid(mapping.serviceUuid) !== report.serviceUuid) {
-        return false;
-    }
-    if (mapping.charUuid && normalizeUuid(mapping.charUuid) !== report.charUuid) {
-        return false;
-    }
-
-    if (mapping.b0 !== undefined) {
-        return mapping.b0 === report.bytes[0] && mapping.b1 === (report.bytes[1] || 0);
-    }
-
-    return !!mapping.bytes;
-}
-
 function handleControllerReport(report) {
     const { slot, label, serviceUuid, charUuid, dataView } = report;
     if (dataView.byteLength === 0) return;
 
+    const ctrl = controllerDevices[slot];
+    const deviceId = ctrl?.id || '';
     const bytes = dataViewToBytes(dataView);
     const parsed = classifyControllerReport(bytes);
     if (parsed.skip) return;
@@ -885,13 +866,31 @@ function handleControllerReport(report) {
 
     markControllerInputReady(slot, charUuid);
 
-    console.log(`[BLE] ${label} report ${shortUuid(serviceUuid)} / ${shortUuid(charUuid)}: [${bytes.join(', ')}]`);
+    const normalizedReport = {
+        deviceId,
+        slot,
+        label,
+        assignment: virtualController.getAssignment(deviceId, ctrl?.name),
+        virtualControllerId: 'virtual-controller-1',
+        serviceUuid,
+        charUuid,
+        data: bytes,
+        parsed,
+        timestamp: Date.now(),
+    };
+    emitControllerReportEvent(normalizedReport);
 
+    console.log(`[BLE] ${label} report ${shortUuid(serviceUuid)} / ${shortUuid(charUuid)}: [${bytes.join(', ')}]`);
+}
+
+function dispatchControllerAction(report) {
+    const { deviceId, assignment, slot, serviceUuid, charUuid, data: bytes, parsed, timestamp } = report;
     if (!parsed.active) return;
 
     if (learnModeAction !== null) {
-        if (previous.changedAt < learnModeStartedAt) return;
+        if (timestamp < learnModeStartedAt) return;
 
+        const sourceKey = `${slot}|${serviceUuid}|${charUuid}`;
         const baseline = learnModeBaselines.get(sourceKey);
         const learnAge = Date.now() - learnModeStartedAt;
 
@@ -911,37 +910,27 @@ function handleControllerReport(report) {
             console.log(`[BLE] Learn mode: state change detected on ${shortUuid(charUuid)} (${baseline} -> ${parsed.stateSig})`);
         }
 
-        const result = saveButtonMapping(learnModeAction, bytes, { serviceUuid, charUuid });
+        const result = saveButtonMapping(learnModeAction, bytes, { deviceId, assignment, serviceUuid, charUuid });
         const cb = learnModeCallback;
         learnModeAction = null;
         learnModeCallback = null;
         learnModeStartedAt = 0;
         learnModeBaselines = new Map();
-        if (cb) cb({ ...result, bytes, serviceUuid, charUuid });
+        if (cb) cb({ ...result, bytes, deviceId, assignment, serviceUuid, charUuid });
         return;
     }
 
-    const map = loadControllerMap();
-    const matchedActions = [];
-    for (const [action, sigMap] of Object.entries(map)) {
-        if (mappingMatches(sigMap, { bytes, serviceUuid, charUuid })) {
-            matchedActions.push(action);
+    const resolution = virtualController.resolveAction(report, loadControllerMap());
+    if (resolution.kind === 'ambiguous') {
+        console.warn(`[BLE] Ambiguous mapping for [${bytes.join(', ')}]: ${resolution.actions.join(', ')}`);
+        return;
+    }
+
+    if (resolution.action) {
+        fire(resolution.action, report);
+        if (resolution.kind === 'parsed') {
+            console.log(`[BLE] Auto-decoded ${resolution.action} from Zwift packet`);
         }
-    }
-
-    if (matchedActions.length > 1) {
-        console.warn(`[BLE] Ambiguous mapping for [${bytes.join(', ')}]: ${matchedActions.join(', ')}`);
-        return;
-    }
-
-    if (matchedActions.length === 1) {
-        fire(matchedActions[0]);
-        return;
-    }
-
-    if (parsed.kind === 'zwift' && parsed.actions.length) {
-        fire(parsed.actions[0]);
-        console.log(`[BLE] Auto-decoded ${parsed.actions[0]} from Zwift packet`);
         return;
     }
 
@@ -956,13 +945,16 @@ function arraysEqual(a, b) {
     return true;
 }
 
-function fire(action) {
-    // Debounce: prevent rapid-fire of same action
+function fire(action, report = {}) {
+    // Debounce per controller source so two physical controllers do not
+    // suppress each other when they emit the same semantic action.
     const now = Date.now();
-    if (actionCooldowns[action] && (now - actionCooldowns[action]) < COOLDOWN_MS) {
+    const cooldownSource = report.deviceId || `${report.slot ?? 'unknown'}|${report.serviceUuid || ''}|${report.charUuid || ''}`;
+    const cooldownKey = `${cooldownSource}|${action}`;
+    if (actionCooldowns[cooldownKey] && (now - actionCooldowns[cooldownKey]) < COOLDOWN_MS) {
         return; // too soon, skip
     }
-    actionCooldowns[action] = now;
+    actionCooldowns[cooldownKey] = now;
 
     if (controllerCallbacks[action]) {
         controllerCallbacks[action]();
@@ -977,22 +969,37 @@ function fire(action) {
 // ══════════════════════════════════════════════════════════════════
 
 export function isControllerConnected() {
-    return controllers.some(c => c.server && c.server.connected
+    return controllerDevices.some(c => c.gattConnected
         && (c.status === 'ready' || c.status === 'degraded'));
 }
 
 export function getControllerInfo(slot) {
-    const c = controllers[slot];
-    const gattConnected = !!(c.server && c.server.connected);
-    return {
-        name:           c.name,
-        id:             c.id,
-        status:         c.status,
-        connected:      gattConnected && c.status !== 'disconnected',
-        gattConnected,
-        inputReady:     !!c.inputReady,
-        issue:          c.issue,
-    };
+    const c = controllerDevices[slot];
+    return c.toInfo(virtualController.getAssignment(c.id, c.name));
+}
+
+export function getVirtualControllerInfo() {
+    return virtualController.getSnapshot(controllerDevices);
+}
+
+export function setControllerAssignment(slot, assignment) {
+    const controller = controllerDevices[slot];
+    const ok = virtualController.setAssignment(controller.id, assignment);
+    if (ok) {
+        if (assignment === 'left' || assignment === 'right') {
+            for (const other of controllerDevices) {
+                if (other.slot === slot || !other.id) continue;
+                if (virtualController.getAssignment(other.id, other.name) === assignment) {
+                    virtualController.setAssignment(other.id, 'standalone');
+                }
+            }
+        }
+
+        controllers.forEach((_, i) => {
+            syncControllerState(i);
+        });
+    }
+    return ok;
 }
 
 export function disconnectController(slot) {
