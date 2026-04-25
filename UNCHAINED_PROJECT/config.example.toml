@@ -29,10 +29,11 @@ client_id = ""
 client_secret = ""
 
 [gear]
-# Total number of gears
+# Total number of virtual gears. 21 is the recommended default because it gives
+# a true neutral middle gear when min/max are symmetric.
 count = 21
 # Neutral gear (0-indexed, this gear = 1.0x trainer gradient feel)
-neutral = 5
+neutral = 10
 # Legacy compatibility knob for older configs
 step_grade = 0.5
 # Highest gear gradient feel scale

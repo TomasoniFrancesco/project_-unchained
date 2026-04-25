@@ -33,7 +33,7 @@ class StravaConfig:
 @dataclass
 class GearConfig:
     count: int = 21
-    neutral: int = 5
+    neutral: int = 10
     step_grade: float = 0.5
     max_difficulty_scale: float = 3.0
     debounce_ms: int = 200

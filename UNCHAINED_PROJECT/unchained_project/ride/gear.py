@@ -22,7 +22,8 @@ class GearSystem:
         roller_max_grade=10.0,
     ):
         self.gear_min = 0
-        self.gear_max = count - 1
+        self.gear_count = max(2, min(40, int(count)))
+        self.gear_max = self.gear_count - 1
         self.gear_neutral = max(self.gear_min, min(neutral, self.gear_max))
         self.step_grade = step_grade
         self.debounce_ms = debounce_ms

@@ -27,6 +27,7 @@ const DEFAULT_WHEEL_CIRC = 2.105; // meters — 700c × 25mm tire
 
 const DEFAULT_ROLLER_MIN_GRADE = -10;
 const DEFAULT_ROLLER_MAX_GRADE = 10;
+const DEFAULT_VIRTUAL_GEAR_COUNT = 21;
 
 export class GearSystem {
     /**
@@ -34,6 +35,7 @@ export class GearSystem {
      * @param {number[]} [config.rearCogs] — tooth counts, easiest→hardest
      * @param {number}   [config.chainring] — front chainring teeth
      * @param {number}   [config.neutralGear] — index of neutral gear (null = middle)
+     * @param {number}   [config.virtualGearCount] — number of virtual gears
      * @param {number}   [config.rollerMinGrade] — lowest gear grade offset (%)
      * @param {number}   [config.rollerMaxGrade] — highest gear grade offset (%)
      * @param {number}   [config.wheelCircumference] — wheel circ in meters
@@ -52,7 +54,7 @@ export class GearSystem {
             [this.rollerMinGrade, this.rollerMaxGrade] = [this.rollerMaxGrade, this.rollerMinGrade];
         }
 
-        this.gearCount    = this.rearCogs.length;
+        this.gearCount    = normalizeGearCount(config.virtualGearCount, DEFAULT_VIRTUAL_GEAR_COUNT);
         this.gearMin      = 0;
         this.gearMax      = this.gearCount - 1;
 
@@ -61,9 +63,15 @@ export class GearSystem {
         this.neutralGear  = config.neutralGear ?? defaultNeutral;
         this.neutralGear  = Math.max(this.gearMin, Math.min(this.neutralGear, this.gearMax));
 
-        // Precompute ratios. Gear 0 is always the easiest gear and maps to
-        // rollerMinGrade; the final gear maps to rollerMaxGrade.
-        this._ratios = this.rearCogs.map(cog => this.chainring / cog);
+        // Precompute virtual ratios across the physical cassette range. Gear 0
+        // maps to rollerMinGrade; the final gear maps to rollerMaxGrade.
+        const easiestRatio = this.chainring / this.rearCogs[0];
+        const hardestRatio = this.chainring / this.rearCogs[this.rearCogs.length - 1];
+        this._ratios = Array.from({ length: this.gearCount }, (_, index) => {
+            if (this.gearMax <= this.gearMin) return easiestRatio;
+            const t = index / this.gearMax;
+            return easiestRatio + ((hardestRatio - easiestRatio) * t);
+        });
 
         // State
         this.currentGear     = this.gearMin;
@@ -160,8 +168,8 @@ export class GearSystem {
     /** Total number of gears. */
     getGearCount() { return this.gearCount; }
 
-    /** Current rear cog tooth count. */
-    getRearCog() { return this.rearCogs[this.currentGear]; }
+    /** Current equivalent rear cog tooth count. */
+    getRearCog() { return Math.round(this.chainring / this.getRatio()); }
 
     /** Front chainring tooth count. */
     getChainring() { return this.chainring; }
@@ -191,4 +199,10 @@ function normalizeGrade(value, fallback) {
     const parsed = Number(value);
     if (!Number.isFinite(parsed)) return fallback;
     return Math.max(-40, Math.min(40, parsed));
+}
+
+function normalizeGearCount(value, fallback) {
+    const parsed = Math.round(Number(value));
+    if (!Number.isFinite(parsed)) return fallback;
+    return Math.max(2, Math.min(40, parsed));
 }

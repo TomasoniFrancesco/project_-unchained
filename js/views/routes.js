@@ -887,6 +887,10 @@ export async function mount(container) {
             <div class="gen-modal-body">
                 <div class="gen-section" style="margin-bottom:0;">
                     <div class="gen-section-title">Range rullo</div>
+                    <div class="form-group">
+                        <label class="form-label" for="virtualGearCount">Numero marce virtuali</label>
+                        <input class="form-input" type="number" id="virtualGearCount" min="2" max="40" step="1">
+                    </div>
                     <div class="settings-grid">
                         <div class="form-group" style="margin-bottom:0;">
                             <label class="form-label" for="rollerMinGrade">Valore minimo scala rullo (%)</label>
@@ -898,7 +902,7 @@ export async function mount(container) {
                         </div>
                     </div>
                     <div class="settings-hint">
-                        La marcia piu bassa usa esattamente il minimo configurato; la marcia piu alta usa il massimo.
+                        Default consigliato: 21 marce. La marcia piu bassa usa esattamente il minimo configurato; la marcia piu alta usa il massimo.
                     </div>
                 </div>
             </div>
@@ -1013,6 +1017,7 @@ export async function mount(container) {
 
     function hydrateSettingsForm() {
         const config = loadConfig();
+        $('#virtualGearCount').value = config.gear.virtual_gear_count ?? 21;
         $('#rollerMinGrade').value = config.gear.roller_min_grade ?? -10;
         $('#rollerMaxGrade').value = config.gear.roller_max_grade ?? 10;
     }
@@ -1035,13 +1040,18 @@ export async function mount(container) {
     $('#settingsSaveBtn').onclick = () => {
         const minGrade = Number($('#rollerMinGrade').value);
         const maxGrade = Number($('#rollerMaxGrade').value);
+        const gearCount = Math.round(Number($('#virtualGearCount').value));
 
+        if (!Number.isFinite(gearCount) || gearCount < 2 || gearCount > 40) {
+            alert('Inserisci un numero di marce tra 2 e 40. Il valore consigliato e 21.');
+            return;
+        }
         if (!Number.isFinite(minGrade) || !Number.isFinite(maxGrade) || minGrade < -40 || maxGrade > 40 || minGrade >= maxGrade) {
             alert('Inserisci un minimo e un massimo validi tra -40% e 40%. Il minimo deve essere inferiore al massimo.');
             return;
         }
 
-        updateGearRange(minGrade, maxGrade);
+        updateGearRange(minGrade, maxGrade, gearCount);
         settingsOverlay.classList.remove('open');
         const toast = $('#genToast');
         toast.textContent = 'Impostazioni salvate.';

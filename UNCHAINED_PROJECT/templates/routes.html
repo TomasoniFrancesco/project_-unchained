@@ -147,6 +147,10 @@
     <div class="settings-modal" id="settingsModal">
         <div class="card settings-panel">
             <h2>Impostazioni</h2>
+            <div class="form-group">
+                <label class="form-label" for="gearCount">Numero marce virtuali</label>
+                <input class="form-input" id="gearCount" type="number" min="2" max="40" step="1" value="{{ gear.count }}">
+            </div>
             <div class="settings-grid">
                 <div class="form-group">
                     <label class="form-label" for="rollerMinGrade">Valore minimo scala rullo (%)</label>
@@ -157,7 +161,7 @@
                     <input class="form-input" id="rollerMaxGrade" type="number" min="-40" max="40" step="0.5" value="{{ gear.roller_max_grade }}">
                 </div>
             </div>
-            <div class="settings-hint">La marcia piu bassa usa esattamente il minimo configurato; la marcia piu alta usa il massimo.</div>
+            <div class="settings-hint">Default consigliato: 21 marce. La marcia piu bassa usa esattamente il minimo configurato; la marcia piu alta usa il massimo.</div>
             <div class="settings-footer">
                 <button class="btn btn-secondary btn-full" type="button" onclick="closeSettings()">Cancel</button>
                 <button class="btn btn-primary btn-full" type="button" onclick="saveSettings()">Save</button>
@@ -174,8 +178,13 @@
             document.getElementById('settingsModal').classList.remove('open');
         }
         async function saveSettings() {
+            const gearCount = Math.round(Number(document.getElementById('gearCount').value));
             const minGrade = Number(document.getElementById('rollerMinGrade').value);
             const maxGrade = Number(document.getElementById('rollerMaxGrade').value);
+            if (!Number.isFinite(gearCount) || gearCount < 2 || gearCount > 40) {
+                alert('Inserisci un numero di marce tra 2 e 40. Il valore consigliato e 21.');
+                return;
+            }
             if (!Number.isFinite(minGrade) || !Number.isFinite(maxGrade) || minGrade < -40 || maxGrade > 40 || minGrade >= maxGrade) {
                 alert('Inserisci un minimo e un massimo validi tra -40% e 40%. Il minimo deve essere inferiore al massimo.');
                 return;
@@ -183,7 +192,7 @@
             const response = await fetch('/api/config/gear-range', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ roller_min_grade: minGrade, roller_max_grade: maxGrade })
+                body: JSON.stringify({ gear_count: gearCount, roller_min_grade: minGrade, roller_max_grade: maxGrade })
             });
             if (!response.ok) {
                 alert('Impossibile salvare le impostazioni del rullo.');

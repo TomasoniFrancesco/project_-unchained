@@ -11,6 +11,7 @@ const DEFAULTS = {
         debounce_ms: 200,
         smoothing: 0.3,
         startup_resistance_ramp_s: 12,
+        virtual_gear_count: 21,
         roller_min_grade: -10,
         roller_max_grade: 10,
     },
@@ -55,10 +56,11 @@ export function saveConfig(config) {
     return config;
 }
 
-export function updateGearRange(minGrade, maxGrade) {
+export function updateGearRange(minGrade, maxGrade, gearCount = null) {
     const config = loadConfig();
     config.gear.roller_min_grade = minGrade;
     config.gear.roller_max_grade = maxGrade;
+    if (gearCount !== null) config.gear.virtual_gear_count = gearCount;
     return saveConfig(config);
 }
 
