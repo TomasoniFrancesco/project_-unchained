@@ -591,20 +591,34 @@ function syncControllerState(slot) {
 // ── Connection heartbeat ──────────────────────────────────────────
 // Polls server.connected every 2s to catch silent disconnections
 // that Chrome's gattserverdisconnected event sometimes misses.
+// Also refreshes the RideOn activation periodically. Some controllers stop
+// sending input after a few idle minutes unless the app keeps the session warm.
+
+const CONTROLLER_HEARTBEAT_MS = 2000;
+const CONTROLLER_KEEPALIVE_MS = 30000;
 
 function startHeartbeat(slot) {
     stopHeartbeat(slot);
     const n = slot + 1;
+    let lastKeepaliveAt = 0;
     controllerDevices[slot].setHeartbeat(setInterval(() => {
         const ctrl = controllerDevices[slot];
         const gattAlive = ctrl.gattConnected;
         if (!gattAlive && ctrl.status !== 'disconnected') {
             console.warn(`[BLE] Controller ${n}: heartbeat detected silent disconnect`);
             resetControllerSlot(slot);
+            return;
+        }
+
+        const now = Date.now();
+        const writableChannels = controllers[slot].writableChannels || [];
+        if (gattAlive && writableChannels.length && (now - lastKeepaliveAt) >= CONTROLLER_KEEPALIVE_MS) {
+            lastKeepaliveAt = now;
+            void activateControllerChannels(slot, writableChannels, `Controller ${n} keepalive`, 'periodic');
         }
         // Always re-sync so UI reflects true GATT state
         syncControllerState(slot);
-    }, 2000));
+    }, CONTROLLER_HEARTBEAT_MS));
 }
 
 function stopHeartbeat(slot) {
@@ -894,6 +908,7 @@ export async function scanAndConnectController() {
 
         // ── GATT disconnect handler ──
         device.addEventListener('gattserverdisconnected', () => {
+            if (controllerDevices[slot].id !== (device.id || '')) return;
             console.log(`[BLE] Controller ${n} disconnected (GATT event)`);
             resetControllerSlot(slot);
         });

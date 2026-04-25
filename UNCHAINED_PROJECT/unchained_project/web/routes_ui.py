@@ -51,7 +51,7 @@ def routes_screen():
 
     routes = discover_routes(config.routes_dir)
     route_cards = list(routes.values())
-    return render_template("routes.html", routes=route_cards)
+    return render_template("routes.html", routes=route_cards, gear=config.gear)
 
 
 @ui_bp.route("/ride")

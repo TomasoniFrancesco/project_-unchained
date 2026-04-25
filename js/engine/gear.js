@@ -25,10 +25,8 @@ const DEFAULT_REAR_COGS = [32, 28, 25, 22, 20, 18, 16, 14, 13, 12, 11];
 const DEFAULT_CHAINRING = 50;
 const DEFAULT_WHEEL_CIRC = 2.105; // meters — 700c × 25mm tire
 
-// How much grade offset (%) per unit of ratio difference from neutral.
-// Calibrated so that full cassette range ≈ ±3% grade offset, which is
-// clearly noticeable on any smart trainer.
-const DEFAULT_OFFSET_SCALE = 2.0;
+const DEFAULT_ROLLER_MIN_GRADE = -10;
+const DEFAULT_ROLLER_MAX_GRADE = 10;
 
 export class GearSystem {
     /**
@@ -36,7 +34,8 @@ export class GearSystem {
      * @param {number[]} [config.rearCogs] — tooth counts, easiest→hardest
      * @param {number}   [config.chainring] — front chainring teeth
      * @param {number}   [config.neutralGear] — index of neutral gear (null = middle)
-     * @param {number}   [config.offsetScale] — grade offset per ratio unit
+     * @param {number}   [config.rollerMinGrade] — lowest gear grade offset (%)
+     * @param {number}   [config.rollerMaxGrade] — highest gear grade offset (%)
      * @param {number}   [config.wheelCircumference] — wheel circ in meters
      * @param {number}   [config.debounceMs] — minimum ms between shifts
      * @param {number}   [config.smoothing] — EMA alpha for smooth transitions (0–1)
@@ -45,9 +44,13 @@ export class GearSystem {
         this.rearCogs     = config.rearCogs || [...DEFAULT_REAR_COGS];
         this.chainring    = config.chainring || DEFAULT_CHAINRING;
         this.wheelCirc    = config.wheelCircumference || DEFAULT_WHEEL_CIRC;
-        this.offsetScale  = config.offsetScale ?? DEFAULT_OFFSET_SCALE;
         this.debounceMs   = config.debounceMs ?? 200;
         this.smoothing    = config.smoothing ?? 0.3;
+        this.rollerMinGrade = normalizeGrade(config.rollerMinGrade, DEFAULT_ROLLER_MIN_GRADE);
+        this.rollerMaxGrade = normalizeGrade(config.rollerMaxGrade, DEFAULT_ROLLER_MAX_GRADE);
+        if (this.rollerMinGrade > this.rollerMaxGrade) {
+            [this.rollerMinGrade, this.rollerMaxGrade] = [this.rollerMaxGrade, this.rollerMinGrade];
+        }
 
         this.gearCount    = this.rearCogs.length;
         this.gearMin      = 0;
@@ -58,15 +61,15 @@ export class GearSystem {
         this.neutralGear  = config.neutralGear ?? defaultNeutral;
         this.neutralGear  = Math.max(this.gearMin, Math.min(this.neutralGear, this.gearMax));
 
-        // Precompute ratios
+        // Precompute ratios. Gear 0 is always the easiest gear and maps to
+        // rollerMinGrade; the final gear maps to rollerMaxGrade.
         this._ratios = this.rearCogs.map(cog => this.chainring / cog);
-        this._neutralRatio = this._ratios[this.neutralGear];
 
         // State
-        this.currentGear     = this.neutralGear; // Start at neutral (not min!)
+        this.currentGear     = this.gearMin;
         this._lastShiftTime  = 0;
-        this._targetOffset   = 0;  // target grade offset (%)
-        this._smoothOffset   = 0;  // smoothed grade offset (%)
+        this._targetOffset   = this._computeOffset(this.currentGear);
+        this._smoothOffset   = this._targetOffset;
     }
 
     // ──────────────────────────────────────────────────────────────
@@ -109,11 +112,12 @@ export class GearSystem {
 
     /**
      * Compute the grade offset for a given gear index.
-     * Offset is 0% at neutral gear, negative for easier, positive for harder.
+     * Offset is linearly mapped across the configured roller range.
      */
     _computeOffset(gearIndex) {
-        const ratio = this._ratios[gearIndex];
-        return (ratio - this._neutralRatio) * this.offsetScale;
+        if (this.gearMax <= this.gearMin) return this.rollerMinGrade;
+        const t = (gearIndex - this.gearMin) / (this.gearMax - this.gearMin);
+        return this.rollerMinGrade + ((this.rollerMaxGrade - this.rollerMinGrade) * t);
     }
 
     /**
@@ -176,9 +180,15 @@ export class GearSystem {
      * Reset to neutral gear.
      */
     reset() {
-        this.currentGear = this.neutralGear;
+        this.currentGear = this.gearMin;
         this._lastShiftTime = 0;
-        this._targetOffset = 0;
-        this._smoothOffset = 0;
+        this._targetOffset = this._computeOffset(this.currentGear);
+        this._smoothOffset = this._targetOffset;
     }
+}
+
+function normalizeGrade(value, fallback) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return fallback;
+    return Math.max(-40, Math.min(40, parsed));
 }

@@ -197,6 +197,8 @@ async def do_start_ride(gear_system, physics_engine, profile, strava_service, co
         smoothing=config.gear.smoothing,
         min_difficulty_scale=config.gear.min_difficulty_scale,
         downhill_scale=config.gear.downhill_scale,
+        roller_min_grade=config.gear.roller_min_grade,
+        roller_max_grade=config.gear.roller_max_grade,
     )
     physics_engine.reset()
     reset_ride_data()

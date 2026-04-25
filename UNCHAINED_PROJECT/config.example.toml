@@ -47,6 +47,10 @@ min_difficulty_scale = 0.15
 downhill_scale = 0.5
 # Seconds to ramp trainer resistance from flat at ride start
 startup_resistance_ramp_s = 12.0
+# Lowest gear trainer grade offset (%). Gear 1 maps exactly to this value.
+roller_min_grade = -10.0
+# Highest gear trainer grade offset (%). Final gear maps exactly to this value.
+roller_max_grade = 10.0
 
 [physics]
 # Default rider + bike mass in kg (overridden by profile weight if set)

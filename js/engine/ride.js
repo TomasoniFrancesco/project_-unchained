@@ -149,6 +149,8 @@ export function startRide(route) {
     gears = new GearSystem({
         debounceMs: config.gear.debounce_ms || 200,
         smoothing:  config.gear.smoothing || 0.3,
+        rollerMinGrade: config.gear.roller_min_grade ?? -10,
+        rollerMaxGrade: config.gear.roller_max_grade ?? 10,
     });
 
     rideData = newRideData();

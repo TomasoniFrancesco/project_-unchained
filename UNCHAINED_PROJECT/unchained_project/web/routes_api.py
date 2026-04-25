@@ -227,6 +227,38 @@ def api_config_strava():
     return jsonify({"status": "ok"})
 
 
+@api_bp.route("/api/config/gear-range", methods=["POST"])
+def api_config_gear_range():
+    """Save the manually configured trainer range used by virtual gears."""
+    data = request.get_json(silent=True) or {}
+
+    try:
+        min_grade = float(data.get("roller_min_grade"))
+        max_grade = float(data.get("roller_max_grade"))
+    except (TypeError, ValueError):
+        return jsonify({"status": "error", "error": "roller_min_grade and roller_max_grade required"}), 400
+
+    if min_grade < -40.0 or max_grade > 40.0 or min_grade >= max_grade:
+        return jsonify({"status": "error", "error": "range must be ordered and within -40..40"}), 400
+
+    config = current_app.config["APP_CONFIG"]
+    config.gear.roller_min_grade = min_grade
+    config.gear.roller_max_grade = max_grade
+
+    try:
+        _save_gear_range_to_toml(min_grade, max_grade)
+    except Exception as exc:
+        return jsonify({"status": "error", "error": f"Failed to save config: {exc}"}), 500
+
+    return jsonify({
+        "status": "ok",
+        "gear": {
+            "roller_min_grade": min_grade,
+            "roller_max_grade": max_grade,
+        },
+    })
+
+
 def _save_strava_to_toml(client_id: str, client_secret: str):
     """Write/update Strava credentials in config.toml."""
     from unchained_project.config import PROJECT_ROOT
@@ -259,3 +291,35 @@ def _save_strava_to_toml(client_id: str, client_secret: str):
 
     toml_path.write_text(content, encoding="utf-8")
     print(f"  [CONFIG] config.toml updated")
+
+
+def _save_gear_range_to_toml(min_grade: float, max_grade: float):
+    """Write/update gear range values in config.toml."""
+    from unchained_project.config import PROJECT_ROOT
+    import re
+
+    toml_path = PROJECT_ROOT / "config.toml"
+    content = toml_path.read_text(encoding="utf-8") if toml_path.exists() else ""
+    gear_section = re.search(r'^\[gear\].*?(?=^\[|\Z)', content, re.MULTILINE | re.DOTALL)
+
+    def upsert_key(section: str, key: str, value: float) -> str:
+        pattern = rf'^{key}\s*=.*$'
+        line = f"{key} = {value:.2f}"
+        if re.search(pattern, section, re.MULTILINE):
+            return re.sub(pattern, line, section, flags=re.MULTILINE)
+        if section and not section.endswith("\n"):
+            section += "\n"
+        return section + line + "\n"
+
+    if gear_section:
+        section = gear_section.group(0)
+        section = upsert_key(section, "roller_min_grade", min_grade)
+        section = upsert_key(section, "roller_max_grade", max_grade)
+        content = content[:gear_section.start()] + section + content[gear_section.end():]
+    else:
+        if content and not content.endswith("\n"):
+            content += "\n"
+        content += f'\n[gear]\nroller_min_grade = {min_grade:.2f}\nroller_max_grade = {max_grade:.2f}\n'
+
+    toml_path.write_text(content, encoding="utf-8")
+    print("  [CONFIG] gear range updated")

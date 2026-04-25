@@ -26,6 +26,57 @@
         .route-stat .val.elev-color {
             color: var(--color-elevation);
         }
+        .settings-actions {
+            width: 100%;
+            max-width: 580px;
+            margin-bottom: 0.9rem;
+            display: flex;
+            justify-content: flex-end;
+        }
+        .settings-modal {
+            position: fixed;
+            inset: 0;
+            z-index: 50;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+            background: rgba(0, 0, 0, 0.65);
+        }
+        .settings-modal.open {
+            display: flex;
+        }
+        .settings-panel {
+            width: min(100%, 420px);
+            padding: 1.2rem;
+        }
+        .settings-panel h2 {
+            margin: 0 0 1rem;
+            font-size: 1.05rem;
+        }
+        .settings-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.8rem;
+        }
+        .settings-footer {
+            display: flex;
+            gap: 0.7rem;
+            margin-top: 1rem;
+        }
+        .settings-hint {
+            margin-top: 0.8rem;
+            color: var(--text-muted);
+            font-size: 0.76rem;
+            line-height: 1.5;
+        }
+        @media (max-width: 560px) {
+            .settings-grid,
+            .settings-footer {
+                grid-template-columns: 1fr;
+                flex-direction: column;
+            }
+        }
     </style>
 </head>
 
@@ -35,6 +86,10 @@
         <div class="brand-header">
             <h1 class="brand-title">UNCHAINED PROJECT</h1>
             <p class="brand-subtitle">Select your route</p>
+        </div>
+
+        <div class="settings-actions">
+            <button class="btn btn-secondary" type="button" onclick="openSettings()">Impostazioni</button>
         </div>
 
         <div class="routes-grid">
@@ -89,8 +144,53 @@
         </div>
     </nav>
 
+    <div class="settings-modal" id="settingsModal">
+        <div class="card settings-panel">
+            <h2>Impostazioni</h2>
+            <div class="settings-grid">
+                <div class="form-group">
+                    <label class="form-label" for="rollerMinGrade">Valore minimo scala rullo (%)</label>
+                    <input class="form-input" id="rollerMinGrade" type="number" min="-40" max="40" step="0.5" value="{{ gear.roller_min_grade }}">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="rollerMaxGrade">Valore massimo scala rullo (%)</label>
+                    <input class="form-input" id="rollerMaxGrade" type="number" min="-40" max="40" step="0.5" value="{{ gear.roller_max_grade }}">
+                </div>
+            </div>
+            <div class="settings-hint">La marcia piu bassa usa esattamente il minimo configurato; la marcia piu alta usa il massimo.</div>
+            <div class="settings-footer">
+                <button class="btn btn-secondary btn-full" type="button" onclick="closeSettings()">Cancel</button>
+                <button class="btn btn-primary btn-full" type="button" onclick="saveSettings()">Save</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         let selectedKey = null;
+        function openSettings() {
+            document.getElementById('settingsModal').classList.add('open');
+        }
+        function closeSettings() {
+            document.getElementById('settingsModal').classList.remove('open');
+        }
+        async function saveSettings() {
+            const minGrade = Number(document.getElementById('rollerMinGrade').value);
+            const maxGrade = Number(document.getElementById('rollerMaxGrade').value);
+            if (!Number.isFinite(minGrade) || !Number.isFinite(maxGrade) || minGrade < -40 || maxGrade > 40 || minGrade >= maxGrade) {
+                alert('Inserisci un minimo e un massimo validi tra -40% e 40%. Il minimo deve essere inferiore al massimo.');
+                return;
+            }
+            const response = await fetch('/api/config/gear-range', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ roller_min_grade: minGrade, roller_max_grade: maxGrade })
+            });
+            if (!response.ok) {
+                alert('Impossibile salvare le impostazioni del rullo.');
+                return;
+            }
+            closeSettings();
+        }
         function selectRoute(key) {
             document.querySelectorAll('.route-card').forEach(c => c.classList.remove('selected'));
             document.getElementById('card-' + key).classList.add('selected');

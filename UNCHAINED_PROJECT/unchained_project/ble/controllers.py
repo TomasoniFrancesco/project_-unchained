@@ -63,6 +63,7 @@ BTN_SHIFT_DOWN = 1 << 9   # 0x00000200  — left controller  "-"
 
 MASK_SHIFT_UP   = BTN_SHIFT_UP
 MASK_SHIFT_DOWN = BTN_SHIFT_DOWN
+CONTROLLER_KEEPALIVE_S = 30.0
 
 
 # ---------------------------------------------------------------------------
@@ -263,8 +264,18 @@ async def connect_click(address: str, gear_system):
 
         print("[CTRL] Listening for buttons on ALL characteristics. Press + or - on the controller.")
 
+        last_keepalive = time.time()
         while client.is_connected:
             await asyncio.sleep(1.0)
+            now = time.time()
+            if now - last_keepalive >= CONTROLLER_KEEPALIVE_S:
+                last_keepalive = now
+                for char in writable:
+                    try:
+                        await client.write_gatt_char(char.uuid, b"RideOn", response=False)
+                        print(f"  [CTRL] keepalive RideOn sent to {char.uuid}")
+                    except Exception as e:
+                        print(f"  [CTRL] keepalive failed for {char.uuid}: {e}")
 
         print("[CTRL] Click v2 disconnected.")
 
@@ -369,8 +380,16 @@ async def connect_play(address: str, gear_system):
             print("[CTRL] Handshake response timeout — falling back to unencrypted")
 
         print("[CTRL] Listening for buttons...")
+        last_keepalive = time.time()
         while client.is_connected:
             await asyncio.sleep(1.0)
+            if write_uuid and time.time() - last_keepalive >= CONTROLLER_KEEPALIVE_S:
+                last_keepalive = time.time()
+                try:
+                    await client.write_gatt_char(write_uuid, b"RideOn", response=False)
+                    print("[PLAY] keepalive RideOn sent")
+                except Exception as e:
+                    print(f"[PLAY] keepalive failed: {e}")
         print("[CTRL] Play disconnected.")
 
 

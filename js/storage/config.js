@@ -11,6 +11,8 @@ const DEFAULTS = {
         debounce_ms: 200,
         smoothing: 0.3,
         startup_resistance_ramp_s: 12,
+        roller_min_grade: -10,
+        roller_max_grade: 10,
     },
     // Physics
     physics: {
@@ -51,6 +53,13 @@ export function saveConfig(config) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
     console.log('[CONFIG] Saved');
     return config;
+}
+
+export function updateGearRange(minGrade, maxGrade) {
+    const config = loadConfig();
+    config.gear.roller_min_grade = minGrade;
+    config.gear.roller_max_grade = maxGrade;
+    return saveConfig(config);
 }
 
 export function updateStrava(clientId, clientSecret) {

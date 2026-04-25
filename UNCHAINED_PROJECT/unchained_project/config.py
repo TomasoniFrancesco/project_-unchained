@@ -41,6 +41,8 @@ class GearConfig:
     min_difficulty_scale: float = 0.15
     downhill_scale: float = 0.5
     startup_resistance_ramp_s: float = 12.0
+    roller_min_grade: float = -10.0
+    roller_max_grade: float = 10.0
 
 
 @dataclass
@@ -166,7 +168,7 @@ def _apply_toml(cfg: AppConfig, data: dict):
     for key in ("count", "neutral", "debounce_ms"):
         if key in gear:
             setattr(cfg.gear, key, int(gear[key]))
-    for key in ("step_grade", "max_difficulty_scale", "smoothing", "min_difficulty_scale", "downhill_scale", "startup_resistance_ramp_s"):
+    for key in ("step_grade", "max_difficulty_scale", "smoothing", "min_difficulty_scale", "downhill_scale", "startup_resistance_ramp_s", "roller_min_grade", "roller_max_grade"):
         if key in gear:
             setattr(cfg.gear, key, float(gear[key]))
 
