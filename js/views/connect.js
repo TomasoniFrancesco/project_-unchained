@@ -151,7 +151,6 @@ export function mount(container) {
                 <div class="scan-spinner" id="scanHrSpinner"></div>
                 <span id="scanHrLabel">Connect HR Monitor</span>
             </button>
-            <div class="scan-helper">Use a BLE chest strap or enable heart-rate broadcast on a compatible Garmin watch.</div>
         </div>
 
         <div class="scan-area stagger-3">
