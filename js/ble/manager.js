@@ -493,11 +493,11 @@ function resetControllerSlot(slot) {
     syncControllerState(slot);
 }
 
-function markControllerInputReady(slot, charUuid) {
+function markControllerInputReady(slot, charUuid, issue = null) {
     const ctrl = controllerDevices[slot];
     if (ctrl.inputReady && String(ctrl.issue || '').startsWith('Input verified via')) return;
 
-    ctrl.setInputReady(`Input verified via ${shortUuid(charUuid)}`);
+    ctrl.setInputReady(issue || `Input verified via ${shortUuid(charUuid)}`);
     syncControllerState(slot);
 }
 
@@ -788,8 +788,12 @@ function decodeZwiftButtons(bytes) {
 
     return {
         kind: 'zwift',
+        classification: 'button',
         stateSig: `zwift:${bitmap}`,
         active: pressed !== 0,
+        inputCandidate: pressed !== 0,
+        learnCandidate: pressed !== 0,
+        reason: pressed ? 'known Zwift button packet' : 'known Zwift button idle state',
         actions,
     };
 }
@@ -828,23 +832,66 @@ function isTelemetryReport(bytes) {
     return /batt|volt|mv|battery|temp|firmware|version/i.test(asciiPayload);
 }
 
+function isLikelyStatusReport(bytes) {
+    if (bytes[0] === 0x2a) return true;
+    if (bytes[0] === 0x19) return true;
+    return false;
+}
+
 function classifyControllerReport(bytes) {
-    if (!bytes.length) return { skip: true, reason: 'empty packet' };
-    if (bytes.every(byte => byte === 0)) return { skip: true, reason: 'all-zero packet' };
+    if (!bytes.length) return { skip: true, classification: 'ignored', reason: 'empty packet' };
+    if (bytes.every(byte => byte === 0)) return { skip: true, classification: 'ignored', reason: 'all-zero packet' };
 
     const ascii = String.fromCharCode(...bytes);
-    if (ascii === 'RideOn') return { skip: true, reason: 'RideOn echo' };
-    if (isTelemetryReport(bytes)) return { skip: true, reason: 'telemetry/status packet' };
+    if (ascii === 'RideOn') return { skip: true, classification: 'ignored', reason: 'RideOn echo' };
+    if (isTelemetryReport(bytes)) {
+        return {
+            kind: 'status',
+            classification: 'status',
+            stateSig: `status:${bytes.join(',')}`,
+            active: false,
+            inputCandidate: false,
+            learnCandidate: false,
+            reason: 'telemetry/status packet',
+            actions: [],
+        };
+    }
+    if (isLikelyStatusReport(bytes)) {
+        return {
+            kind: 'status',
+            classification: 'status',
+            stateSig: `status:${bytes.join(',')}`,
+            active: false,
+            inputCandidate: false,
+            learnCandidate: false,
+            reason: 'status/config packet',
+            actions: [],
+        };
+    }
 
     const zwift = decodeZwiftButtons(bytes);
     if (zwift) return zwift;
 
     return {
         kind: 'raw',
+        classification: 'unknown',
         stateSig: `raw:${bytes.join(',')}`,
         active: true,
+        inputCandidate: false,
+        learnCandidate: true,
+        reason: 'unknown non-status notification',
         actions: [],
     };
+}
+
+function logLearnPacket(report, decision, reason) {
+    const deviceTag = report.deviceId ? String(report.deviceId).slice(-8) : 'unknown';
+    console.log(
+        `[BLE] Learn mode ${decision}: slot=${report.slot + 1} device=${deviceTag} ` +
+        `svc=${shortUuid(report.serviceUuid)} char=${shortUuid(report.charUuid)} ` +
+        `classification=${report.parsed.classification || 'unknown'} reason="${reason}" ` +
+        `bytes=[${report.data.join(', ')}]`
+    );
 }
 
 function handleControllerReport(report) {
@@ -857,7 +904,14 @@ function handleControllerReport(report) {
     const parsed = classifyControllerReport(bytes);
     if (parsed.skip) {
         if (learnModeAction !== null) {
-            console.log(`[BLE] Learn mode ignored ${label} ${shortUuid(serviceUuid)} / ${shortUuid(charUuid)}: ${parsed.reason}`);
+            logLearnPacket({
+                deviceId,
+                slot,
+                serviceUuid,
+                charUuid,
+                data: bytes,
+                parsed,
+            }, 'ignored', parsed.reason);
         }
         return;
     }
@@ -866,15 +920,29 @@ function handleControllerReport(report) {
     const previous = reportStates.get(sourceKey) || { stateSig: null, changedAt: 0 };
     const duplicateState = previous.stateSig === parsed.stateSig;
     if (duplicateState && learnModeAction === null) return;
-    if (duplicateState) {
-        console.log(`[BLE] Learn mode accepting repeated state from ${label} ${shortUuid(charUuid)}: ${parsed.stateSig}`);
+    if (duplicateState && learnModeAction !== null) {
+        if (!parsed.inputCandidate) {
+            logLearnPacket({
+                deviceId,
+                slot,
+                serviceUuid,
+                charUuid,
+                data: bytes,
+                parsed: {
+                    ...parsed,
+                    classification: 'heartbeat',
+                    learnCandidate: false,
+                    reason: 'repeated non-button notification',
+                },
+            }, 'ignored', 'repeated non-button notification');
+            return;
+        }
+        console.log(`[BLE] Learn mode saw repeated button state from ${label} ${shortUuid(charUuid)}: ${parsed.stateSig}`);
     }
 
     previous.stateSig = parsed.stateSig;
     previous.changedAt = Date.now();
     reportStates.set(sourceKey, previous);
-
-    markControllerInputReady(slot, charUuid);
 
     const normalizedReport = {
         deviceId,
@@ -888,30 +956,34 @@ function handleControllerReport(report) {
         parsed,
         timestamp: Date.now(),
     };
+
+    if (parsed.inputCandidate) {
+        markControllerInputReady(slot, charUuid);
+    }
+
     emitControllerReportEvent(normalizedReport);
 
-    console.log(`[BLE] ${label} report ${shortUuid(serviceUuid)} / ${shortUuid(charUuid)}: [${bytes.join(', ')}]`);
+    console.log(`[BLE] ${label} report ${shortUuid(serviceUuid)} / ${shortUuid(charUuid)} classification=${parsed.classification} reason="${parsed.reason}": [${bytes.join(', ')}]`);
 }
 
 function dispatchControllerAction(report) {
     const { deviceId, assignment, slot, serviceUuid, charUuid, data: bytes, parsed, timestamp } = report;
-    if (!parsed.active) {
-        if (learnModeAction !== null) {
-            console.log(`[BLE] Learn mode ignored inactive packet on ${shortUuid(charUuid)} (${parsed.stateSig})`);
-        }
-        return;
-    }
 
     if (learnModeAction !== null) {
         if (timestamp < learnModeStartedAt) {
-            console.log(`[BLE] Learn mode ignored stale packet on ${shortUuid(charUuid)} (${timestamp} < ${learnModeStartedAt})`);
+            logLearnPacket(report, 'ignored', `stale packet (${timestamp} < ${learnModeStartedAt})`);
+            return;
+        }
+
+        if (!parsed.learnCandidate) {
+            logLearnPacket(report, 'ignored', parsed.reason || 'not a learnable input packet');
             return;
         }
 
         if (parsed.kind === 'zwift' && parsed.actions.length) {
-            console.log(`[BLE] Learn mode accepted decoded Zwift button on ${shortUuid(charUuid)}: ${parsed.actions.join(', ')}`);
+            logLearnPacket(report, 'accepted', `decoded Zwift button: ${parsed.actions.join(', ')}`);
         } else {
-            console.log(`[BLE] Learn mode accepted raw notification on ${shortUuid(charUuid)} (${bytes.length}B): ${parsed.stateSig}`);
+            logLearnPacket(report, 'accepted', parsed.reason || 'learnable raw notification');
         }
 
         const result = saveButtonMapping(learnModeAction, bytes, {
@@ -926,9 +998,12 @@ function dispatchControllerAction(report) {
         learnModeAction = null;
         learnModeCallback = null;
         learnModeStartedAt = 0;
+        markControllerInputReady(slot, charUuid, `Input learned via ${shortUuid(charUuid)}`);
         if (cb) cb({ ...result, bytes, deviceId, slot, assignment, serviceUuid, charUuid, signature: parsed.stateSig });
         return;
     }
+
+    if (!parsed.active) return;
 
     const resolution = virtualController.resolveAction(report, loadControllerMap());
     if (resolution.kind === 'ambiguous') {

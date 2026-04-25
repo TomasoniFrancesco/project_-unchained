@@ -230,10 +230,10 @@ export function mount(container) {
     // ── Learn mode ──
     ACTIONS.forEach(action => {
         $(`#mapBtn-${action}`).onclick = () => {
-            const readyControllers = [0, 1]
+            const connectedControllers = [0, 1]
                 .map(slot => getControllerInfo(slot))
-                .filter(info => info.connected && info.inputReady);
-            if (!readyControllers.length) { alert('Connect at least one controller with working button input first.'); return; }
+                .filter(info => info.connected);
+            if (!connectedControllers.length) { alert('Connect at least one controller first.'); return; }
             cancelLearnMode();
             ACTIONS.forEach(a => { $(`#mapRow-${a}`).classList.remove('learning'); const b = $(`#mapBtn-${a}`); b.textContent = 'Set'; b.classList.remove('learning-btn'); });
             $(`#mapRow-${action}`).classList.add('learning');
