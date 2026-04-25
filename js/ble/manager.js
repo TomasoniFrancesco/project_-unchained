@@ -119,9 +119,6 @@ const slotLocked = [false, false];
 let learnModeAction   = null;
 let learnModeCallback = null;
 let learnModeStartedAt = 0;
-let learnModeBaselines = new Map();
-
-const LEARN_BASELINE_WINDOW_MS = 350;
 
 // ── Normalized controller reports ─────────────────────────────────
 // Keeps the current 2-slot model, but routes reports through a small
@@ -190,6 +187,10 @@ function mappingsEqual(a, b) {
     const bDeviceId = b?.deviceId || '';
     if (aDeviceId && bDeviceId && aDeviceId !== bDeviceId) return false;
 
+    const aSlot = a?.slot;
+    const bSlot = b?.slot;
+    if (aSlot !== undefined && bSlot !== undefined && aSlot !== bSlot) return false;
+
     const aHasSource = !!(a?.serviceUuid || a?.charUuid);
     const bHasSource = !!(b?.serviceUuid || b?.charUuid);
     if (!aHasSource || !bHasSource) return true;
@@ -203,8 +204,10 @@ export function saveButtonMapping(action, bytes, source = null) {
     const nextMapping = {
         action,
         ...(source?.deviceId ? { deviceId: source.deviceId } : {}),
+        ...(source?.slot !== undefined ? { slot: source.slot } : {}),
         ...(source?.assignment ? { assignment: source.assignment } : {}),
         bytes: Array.from(bytes),
+        ...(source?.signature ? { signature: source.signature } : {}),
         ...(source?.serviceUuid ? { serviceUuid: normalizeUuid(source.serviceUuid) } : {}),
         ...(source?.charUuid ? { charUuid: normalizeUuid(source.charUuid) } : {}),
     };
@@ -232,7 +235,6 @@ export function startLearnMode(action, callback) {
     learnModeAction   = action;
     learnModeCallback = callback;
     learnModeStartedAt = Date.now();
-    learnModeBaselines = new Map();
     console.log(`[BLE] Learn mode started for: ${action}`);
 }
 
@@ -240,7 +242,6 @@ export function cancelLearnMode() {
     learnModeAction   = null;
     learnModeCallback = null;
     learnModeStartedAt = 0;
-    learnModeBaselines = new Map();
 }
 
 export function isLearning() {
@@ -828,12 +829,12 @@ function isTelemetryReport(bytes) {
 }
 
 function classifyControllerReport(bytes) {
-    if (!bytes.length) return { skip: true };
-    if (bytes.every(byte => byte === 0)) return { skip: true };
+    if (!bytes.length) return { skip: true, reason: 'empty packet' };
+    if (bytes.every(byte => byte === 0)) return { skip: true, reason: 'all-zero packet' };
 
     const ascii = String.fromCharCode(...bytes);
-    if (ascii === 'RideOn') return { skip: true };
-    if (isTelemetryReport(bytes)) return { skip: true };
+    if (ascii === 'RideOn') return { skip: true, reason: 'RideOn echo' };
+    if (isTelemetryReport(bytes)) return { skip: true, reason: 'telemetry/status packet' };
 
     const zwift = decodeZwiftButtons(bytes);
     if (zwift) return zwift;
@@ -854,11 +855,20 @@ function handleControllerReport(report) {
     const deviceId = ctrl?.id || '';
     const bytes = dataViewToBytes(dataView);
     const parsed = classifyControllerReport(bytes);
-    if (parsed.skip) return;
+    if (parsed.skip) {
+        if (learnModeAction !== null) {
+            console.log(`[BLE] Learn mode ignored ${label} ${shortUuid(serviceUuid)} / ${shortUuid(charUuid)}: ${parsed.reason}`);
+        }
+        return;
+    }
 
     const sourceKey = `${slot}|${serviceUuid}|${charUuid}`;
     const previous = reportStates.get(sourceKey) || { stateSig: null, changedAt: 0 };
-    if (previous.stateSig === parsed.stateSig) return;
+    const duplicateState = previous.stateSig === parsed.stateSig;
+    if (duplicateState && learnModeAction === null) return;
+    if (duplicateState) {
+        console.log(`[BLE] Learn mode accepting repeated state from ${label} ${shortUuid(charUuid)}: ${parsed.stateSig}`);
+    }
 
     previous.stateSig = parsed.stateSig;
     previous.changedAt = Date.now();
@@ -885,38 +895,38 @@ function handleControllerReport(report) {
 
 function dispatchControllerAction(report) {
     const { deviceId, assignment, slot, serviceUuid, charUuid, data: bytes, parsed, timestamp } = report;
-    if (!parsed.active) return;
+    if (!parsed.active) {
+        if (learnModeAction !== null) {
+            console.log(`[BLE] Learn mode ignored inactive packet on ${shortUuid(charUuid)} (${parsed.stateSig})`);
+        }
+        return;
+    }
 
     if (learnModeAction !== null) {
-        if (timestamp < learnModeStartedAt) return;
-
-        const sourceKey = `${slot}|${serviceUuid}|${charUuid}`;
-        const baseline = learnModeBaselines.get(sourceKey);
-        const learnAge = Date.now() - learnModeStartedAt;
-
-        if (!baseline) {
-            if (parsed.kind === 'zwift' && parsed.actions.length) {
-                console.log(`[BLE] Learn mode: direct button event detected on ${shortUuid(charUuid)}`);
-            } else if (learnAge < LEARN_BASELINE_WINDOW_MS) {
-                learnModeBaselines.set(sourceKey, parsed.stateSig);
-                console.log(`[BLE] Learn mode: baseline captured on ${shortUuid(charUuid)} (${parsed.stateSig})`);
-                return;
-            } else {
-                console.log(`[BLE] Learn mode: no baseline seen, accepting event fallback on ${shortUuid(charUuid)}`);
-            }
-        } else if (baseline === parsed.stateSig) {
+        if (timestamp < learnModeStartedAt) {
+            console.log(`[BLE] Learn mode ignored stale packet on ${shortUuid(charUuid)} (${timestamp} < ${learnModeStartedAt})`);
             return;
-        } else {
-            console.log(`[BLE] Learn mode: state change detected on ${shortUuid(charUuid)} (${baseline} -> ${parsed.stateSig})`);
         }
 
-        const result = saveButtonMapping(learnModeAction, bytes, { deviceId, assignment, serviceUuid, charUuid });
+        if (parsed.kind === 'zwift' && parsed.actions.length) {
+            console.log(`[BLE] Learn mode accepted decoded Zwift button on ${shortUuid(charUuid)}: ${parsed.actions.join(', ')}`);
+        } else {
+            console.log(`[BLE] Learn mode accepted raw notification on ${shortUuid(charUuid)} (${bytes.length}B): ${parsed.stateSig}`);
+        }
+
+        const result = saveButtonMapping(learnModeAction, bytes, {
+            deviceId,
+            slot,
+            assignment,
+            serviceUuid,
+            charUuid,
+            signature: parsed.stateSig,
+        });
         const cb = learnModeCallback;
         learnModeAction = null;
         learnModeCallback = null;
         learnModeStartedAt = 0;
-        learnModeBaselines = new Map();
-        if (cb) cb({ ...result, bytes, deviceId, assignment, serviceUuid, charUuid });
+        if (cb) cb({ ...result, bytes, deviceId, slot, assignment, serviceUuid, charUuid, signature: parsed.stateSig });
         return;
     }
 
