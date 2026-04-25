@@ -42,6 +42,8 @@ function mappingMatchesReport(mapping, report) {
 
     if (mapping.deviceId) {
         if (mapping.deviceId !== report.deviceId) return false;
+    } else if (mapping.slot !== undefined && mapping.slot !== report.slot) {
+        return false;
     } else if (mapping.assignment && mapping.assignment !== report.assignment) {
         return false;
     }
