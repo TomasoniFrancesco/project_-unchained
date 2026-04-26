@@ -408,7 +408,7 @@ export function mount(container) {
         const lane = i % 2 === 0 ? -1 : 1;
         const roll = pseudoNoise(i * 9.1, 22);
         const signRoll = pseudoNoise(i * 13.7, 91);
-        const type = signRoll < 0.10 ? 'sign' : 'detail';
+        const type = signRoll < 0.01 ? 'sign' : 'detail';
         const sideOffset = type === 'sign' ? 58 : 20;
         return {
             dist: 60 + i * (scenerySpan / 72) + pseudoNoise(i, 5) * 18,
