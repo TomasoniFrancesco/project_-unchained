@@ -397,18 +397,38 @@ export function mount(container) {
 
     // ── Procedural world elements (generated once) ──
     const stars = Array.from({length:120}, () => ({x:Math.random(),y:Math.random()*0.45,r:Math.random()*1.2+0.3,b:Math.random()*0.5+0.5}));
+    const BIOME_LENGTH_M = 5000;
+    const BIOMES = [
+        { id: 'forest', ground: [22, 50, 28], near: [10, 42, 22], accent: '#1F7A42' },
+        { id: 'desert', ground: [113, 86, 43], near: [94, 68, 35], accent: '#D6A84D' },
+        { id: 'city', ground: [45, 54, 62], near: [33, 39, 47], accent: '#94A3B8' },
+    ];
     const scenerySpan = 1400;
     const scenery = Array.from({ length: 72 }, (_, i) => {
         const lane = i % 2 === 0 ? -1 : 1;
         const roll = pseudoNoise(i * 9.1, 22);
-        const type = roll > 0.78 ? 'sign' : roll > 0.58 ? 'rock' : 'tree';
+        const signRoll = pseudoNoise(i * 13.7, 91);
+        const type = signRoll < 0.10 ? 'sign' : 'detail';
+        const sideOffset = type === 'sign' ? 58 : 20;
         return {
             dist: 60 + i * (scenerySpan / 72) + pseudoNoise(i, 5) * 18,
             side: lane,
             type,
-            offset: 20 + pseudoNoise(i, 11) * 70,
+            roll,
+            offset: sideOffset + pseudoNoise(i, 11) * 70,
             height: 0.85 + pseudoNoise(i, 17) * 0.6,
             lean: (pseudoNoise(i, 31) - 0.5) * 0.18,
+        };
+    });
+    const ambientScenery = Array.from({ length: 120 }, (_, i) => {
+        const side = i % 2 === 0 ? -1 : 1;
+        return {
+            dist: 35 + i * (scenerySpan / 120) + pseudoNoise(i, 41) * 28,
+            side,
+            offset: 115 + pseudoNoise(i, 43) * 390,
+            height: 0.55 + pseudoNoise(i, 47) * 0.9,
+            roll: pseudoNoise(i, 53),
+            lean: (pseudoNoise(i, 59) - 0.5) * 0.12,
         };
     });
 
@@ -433,7 +453,42 @@ export function mount(container) {
         return `rgb(${m[0]},${m[1]},${m[2]})`;
     }
 
-    function drawRoadsideScenery(ctx, w, h, currentDist, vanishX, vanishY, roadBottom, day) {
+    function getBiome(currentDist) {
+        return BIOMES[Math.floor(Math.max(0, currentDist) / BIOME_LENGTH_M) % BIOMES.length];
+    }
+
+    function drawAmbientScenery(ctx, w, h, currentDist, vanishX, vanishY, roadBottom, day, biome) {
+        const lookAhead = 980;
+        const ordered = ambientScenery
+            .map(item => ({ ...item, rel: (item.dist - (currentDist % scenerySpan) + scenerySpan) % scenerySpan }))
+            .filter(item => item.rel < lookAhead)
+            .sort((a, b) => b.rel - a.rel);
+
+        for (const item of ordered) {
+            const depth = 1 - item.rel / lookAhead;
+            const y = vanishY + Math.pow(depth, 1.35) * (roadBottom - vanishY);
+            const roadHalfW = lerp(2, w * 0.18, Math.pow(depth, 1.2));
+            const x = vanishX + item.side * (roadHalfW + item.offset * (0.45 + depth * 0.9));
+            const scale = (0.11 + depth * 0.72) * item.height;
+            const alpha = clamp(depth * 1.2, 0, 0.82);
+            ctx.save();
+            ctx.globalAlpha = alpha;
+            ctx.translate(x, y);
+            ctx.scale(item.side, 1);
+            if (biome.id === 'forest') {
+                drawTree(ctx, scale, item.lean, day);
+            } else if (biome.id === 'desert') {
+                if (item.roll > 0.34) drawCactus(ctx, scale, day);
+                else drawRock(ctx, scale, day, biome);
+            } else {
+                if (item.roll > 0.35) drawBuilding(ctx, scale, day, item.roll);
+                else drawLamp(ctx, scale, day);
+            }
+            ctx.restore();
+        }
+    }
+
+    function drawRoadsideScenery(ctx, w, h, currentDist, vanishX, vanishY, roadBottom, day, biome) {
         const lookAhead = 820;
         const ordered = scenery
             .map(item => ({ ...item, rel: (item.dist - (currentDist % scenerySpan) + scenerySpan) % scenerySpan }))
@@ -452,10 +507,22 @@ export function mount(container) {
             ctx.globalAlpha = alpha;
             ctx.translate(x, y);
             ctx.scale(item.side, 1);
-            if (item.type === 'tree') drawTree(ctx, scale, item.lean, day);
-            else if (item.type === 'rock') drawRock(ctx, scale, day);
-            else drawSign(ctx, scale, item.side);
+            if (item.type === 'sign') drawSign(ctx, scale);
+            else drawBiomeDetail(ctx, scale, item.lean, day, biome, item.roll);
             ctx.restore();
+        }
+    }
+
+    function drawBiomeDetail(ctx, scale, lean, day, biome, roll) {
+        if (biome.id === 'forest') {
+            if (roll > 0.78) drawRock(ctx, scale, day, biome);
+            else drawTree(ctx, scale, lean, day);
+        } else if (biome.id === 'desert') {
+            if (roll > 0.62) drawRock(ctx, scale, day, biome);
+            else drawCactus(ctx, scale, day);
+        } else {
+            if (roll > 0.58) drawLamp(ctx, scale, day);
+            else drawBuilding(ctx, scale, day, roll);
         }
     }
 
@@ -480,8 +547,10 @@ export function mount(container) {
         ctx.restore();
     }
 
-    function drawRock(ctx, scale, day) {
-        ctx.fillStyle = day > 0.5 ? '#6B7280' : '#2D3441';
+    function drawRock(ctx, scale, day, biome = BIOMES[0]) {
+        ctx.fillStyle = biome.id === 'desert'
+            ? (day > 0.5 ? '#A06A38' : '#4A3828')
+            : (day > 0.5 ? '#6B7280' : '#2D3441');
         ctx.beginPath();
         ctx.moveTo(-18 * scale, 0);
         ctx.lineTo(-8 * scale, -12 * scale);
@@ -493,6 +562,52 @@ export function mount(container) {
         ctx.fill();
         ctx.strokeStyle = 'rgba(255,255,255,0.12)';
         ctx.stroke();
+    }
+
+    function drawCactus(ctx, scale, day) {
+        ctx.strokeStyle = day > 0.5 ? '#2F6F3B' : '#18351F';
+        ctx.lineWidth = 7 * scale;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(0, -54 * scale);
+        ctx.moveTo(0, -30 * scale);
+        ctx.lineTo(-14 * scale, -30 * scale);
+        ctx.lineTo(-14 * scale, -42 * scale);
+        ctx.moveTo(0, -38 * scale);
+        ctx.lineTo(14 * scale, -38 * scale);
+        ctx.lineTo(14 * scale, -51 * scale);
+        ctx.stroke();
+        ctx.lineCap = 'butt';
+    }
+
+    function drawBuilding(ctx, scale, day, roll) {
+        const width = (22 + roll * 24) * scale;
+        const height = (58 + roll * 72) * scale;
+        ctx.fillStyle = day > 0.5 ? '#64748B' : '#202A36';
+        ctx.fillRect(-width / 2, -height, width, height);
+        ctx.fillStyle = day > 0.5 ? 'rgba(219,234,254,0.35)' : 'rgba(250,204,21,0.45)';
+        const cols = Math.max(2, Math.floor(width / (8 * scale)));
+        for (let c = 0; c < cols; c++) {
+            for (let r = 0; r < 4; r++) {
+                if (pseudoNoise(c * 3 + r, roll * 10) < 0.35) continue;
+                ctx.fillRect(-width / 2 + (4 + c * 8) * scale, -height + (10 + r * 13) * scale, 3.5 * scale, 5 * scale);
+            }
+        }
+    }
+
+    function drawLamp(ctx, scale, day) {
+        ctx.strokeStyle = day > 0.5 ? '#475569' : '#293241';
+        ctx.lineWidth = 3 * scale;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(0, -56 * scale);
+        ctx.lineTo(14 * scale, -60 * scale);
+        ctx.stroke();
+        ctx.fillStyle = day > 0.5 ? 'rgba(255,255,255,0.22)' : 'rgba(250,204,21,0.75)';
+        ctx.beginPath();
+        ctx.arc(16 * scale, -60 * scale, 5 * scale, 0, Math.PI * 2);
+        ctx.fill();
     }
 
     function drawSign(ctx, scale) {
@@ -520,6 +635,7 @@ export function mount(container) {
         const curElev = getElevAtDist(currentDist);
         const curSlope = getSlopeAtDist(currentDist);
         const progress = elevBounds.maxDist > 0 ? currentDist / elevBounds.maxDist : 0;
+        const biome = getBiome(currentDist);
 
         const dayPhase = clamp(progress * 1.25, 0, 1);
         const dawn = clamp((dayPhase - 0.18) / 0.34, 0, 1);
@@ -584,12 +700,17 @@ export function mount(container) {
         hGlow.addColorStop(1, 'transparent');
         ctx.fillStyle = hGlow; ctx.fillRect(0, horizonY - 30, w, 50);
 
+        const vanishX = w * 0.5, vanishY = horizonY;
+        const roadBottom = h * 0.92;
+
         // ── Ground plane ──
         const gndGrad = ctx.createLinearGradient(0, horizonY, 0, h);
-        const baseGreen = curSlope > 0.03 ? [25, 55, 30] : curSlope < -0.02 ? [20, 45, 35] : [22, 50, 28];
-        gndGrad.addColorStop(0, `rgba(${baseGreen[0]},${baseGreen[1]+10},${baseGreen[2]},1)`);
-        gndGrad.addColorStop(0.3, `rgba(${baseGreen[0]-4},${baseGreen[1]},${baseGreen[2]-5},1)`);
-        gndGrad.addColorStop(1, `rgba(${baseGreen[0]-8},${baseGreen[1]-15},${baseGreen[2]-10},1)`);
+        const ground = biome.ground;
+        const near = biome.near;
+        const slopeShade = curSlope > 0.03 ? 8 : curSlope < -0.02 ? -5 : 0;
+        gndGrad.addColorStop(0, `rgba(${ground[0]},${ground[1] + slopeShade},${ground[2]},1)`);
+        gndGrad.addColorStop(0.38, `rgba(${near[0]},${near[1]},${near[2]},1)`);
+        gndGrad.addColorStop(1, `rgba(${Math.max(0, near[0]-12)},${Math.max(0, near[1]-18)},${Math.max(0, near[2]-12)},1)`);
         ctx.fillStyle = gndGrad; ctx.fillRect(0, horizonY, w, h - horizonY);
 
         // ── Ground texture stripes (perspective speed lines) ──
@@ -603,9 +724,9 @@ export function mount(container) {
             ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
         }
 
+        drawAmbientScenery(ctx, w, h, currentDist, vanishX, horizonY, h * 0.92, day, biome);
+
         // ── Road with perspective ──
-        const vanishX = w * 0.5, vanishY = horizonY;
-        const roadBottom = h * 0.92;
         const roadSegments = 40;
         const leftEdge = [], rightEdge = [], centerLine = [];
         for (let i = 0; i <= roadSegments; i++) {
@@ -643,7 +764,7 @@ export function mount(container) {
         ctx.strokeStyle = 'rgba(249,115,22,0.2)'; ctx.lineWidth = 3;
         ctx.beginPath(); for (let i = 0; i < centerLine.length; i++) { if (i === 0) ctx.moveTo(centerLine[i].x, centerLine[i].y); else ctx.lineTo(centerLine[i].x, centerLine[i].y); } ctx.stroke();
 
-        drawRoadsideScenery(ctx, w, h, currentDist, vanishX, vanishY, roadBottom, day);
+        drawRoadsideScenery(ctx, w, h, currentDist, vanishX, vanishY, roadBottom, day, biome);
 
         // ── Rider marker ──
         const riderX = vanishX, riderY = roadBottom - 12;
