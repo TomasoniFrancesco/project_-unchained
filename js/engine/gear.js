@@ -25,9 +25,9 @@ const DEFAULT_REAR_COGS = [32, 28, 25, 22, 20, 18, 16, 14, 13, 12, 11];
 const DEFAULT_CHAINRING = 50;
 const DEFAULT_WHEEL_CIRC = 2.105; // meters — 700c × 25mm tire
 
-const DEFAULT_ROLLER_MIN_GRADE = -10;
-const DEFAULT_ROLLER_MAX_GRADE = 10;
-const DEFAULT_VIRTUAL_GEAR_COUNT = 21;
+const DEFAULT_ROLLER_MIN_GRADE = 1;
+const DEFAULT_ROLLER_MAX_GRADE = 22;
+const DEFAULT_VIRTUAL_GEAR_COUNT = 22;
 
 export class GearSystem {
     /**
@@ -96,7 +96,7 @@ export class GearSystem {
         this.currentGear += 1;
         this._targetOffset = this._computeOffset(this.currentGear);
         this._lastShiftTime = now;
-        console.log(`[GEAR] ${old}→${this.currentGear} (HARDER) | ratio: ${this.getRatio().toFixed(2)} | offset: ${this._targetOffset.toFixed(1)}%`);
+        console.log(`[GEAR] ${old}→${this.currentGear} (HARDER) | ratio: ${this.getRatio().toFixed(2)} | roller: ${this._targetOffset.toFixed(1)}`);
     }
 
     /**
@@ -111,7 +111,7 @@ export class GearSystem {
         this.currentGear -= 1;
         this._targetOffset = this._computeOffset(this.currentGear);
         this._lastShiftTime = now;
-        console.log(`[GEAR] ${old}→${this.currentGear} (EASIER) | ratio: ${this.getRatio().toFixed(2)} | offset: ${this._targetOffset.toFixed(1)}%`);
+        console.log(`[GEAR] ${old}→${this.currentGear} (EASIER) | ratio: ${this.getRatio().toFixed(2)} | roller: ${this._targetOffset.toFixed(1)}`);
     }
 
     // ──────────────────────────────────────────────────────────────
@@ -198,7 +198,7 @@ export class GearSystem {
 function normalizeGrade(value, fallback) {
     const parsed = Number(value);
     if (!Number.isFinite(parsed)) return fallback;
-    return Math.max(-40, Math.min(40, parsed));
+    return Math.max(1, Math.min(40, parsed));
 }
 
 function normalizeGearCount(value, fallback) {

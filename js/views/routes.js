@@ -893,16 +893,16 @@ export async function mount(container) {
                     </div>
                     <div class="settings-grid">
                         <div class="form-group" style="margin-bottom:0;">
-                            <label class="form-label" for="rollerMinGrade">Valore minimo scala rullo (%)</label>
-                            <input class="form-input" type="number" id="rollerMinGrade" min="-40" max="40" step="0.5">
+                            <label class="form-label" for="rollerMinGrade">Valore minimo scala rullo</label>
+                            <input class="form-input" type="number" id="rollerMinGrade" min="1" max="40" step="1">
                         </div>
                         <div class="form-group" style="margin-bottom:0;">
-                            <label class="form-label" for="rollerMaxGrade">Valore massimo scala rullo (%)</label>
-                            <input class="form-input" type="number" id="rollerMaxGrade" min="-40" max="40" step="0.5">
+                            <label class="form-label" for="rollerMaxGrade">Valore massimo scala rullo</label>
+                            <input class="form-input" type="number" id="rollerMaxGrade" min="1" max="40" step="1">
                         </div>
                     </div>
                     <div class="settings-hint">
-                        Default consigliato: 21 marce. La marcia piu bassa usa esattamente il minimo configurato; la marcia piu alta usa il massimo.
+                        Default consigliato: 22 marce su scala 1-22. La marcia piu bassa usa esattamente il minimo configurato; la marcia piu alta usa il massimo.
                     </div>
                 </div>
             </div>
@@ -1017,9 +1017,9 @@ export async function mount(container) {
 
     function hydrateSettingsForm() {
         const config = loadConfig();
-        $('#virtualGearCount').value = config.gear.virtual_gear_count ?? 21;
-        $('#rollerMinGrade').value = config.gear.roller_min_grade ?? -10;
-        $('#rollerMaxGrade').value = config.gear.roller_max_grade ?? 10;
+        $('#virtualGearCount').value = config.gear.virtual_gear_count ?? 22;
+        $('#rollerMinGrade').value = config.gear.roller_min_grade ?? 1;
+        $('#rollerMaxGrade').value = config.gear.roller_max_grade ?? 22;
     }
 
     $('#settingsBtn').onclick = () => {
@@ -1043,11 +1043,11 @@ export async function mount(container) {
         const gearCount = Math.round(Number($('#virtualGearCount').value));
 
         if (!Number.isFinite(gearCount) || gearCount < 2 || gearCount > 40) {
-            alert('Inserisci un numero di marce tra 2 e 40. Il valore consigliato e 21.');
+            alert('Inserisci un numero di marce tra 2 e 40. Il valore consigliato e 22.');
             return;
         }
-        if (!Number.isFinite(minGrade) || !Number.isFinite(maxGrade) || minGrade < -40 || maxGrade > 40 || minGrade >= maxGrade) {
-            alert('Inserisci un minimo e un massimo validi tra -40% e 40%. Il minimo deve essere inferiore al massimo.');
+        if (!Number.isFinite(minGrade) || !Number.isFinite(maxGrade) || minGrade < 1 || maxGrade > 40 || minGrade >= maxGrade) {
+            alert('Inserisci un minimo e un massimo validi tra 1 e 40. Il minimo deve essere inferiore al massimo.');
             return;
         }
 

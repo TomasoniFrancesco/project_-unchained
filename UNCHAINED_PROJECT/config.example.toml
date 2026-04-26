@@ -29,11 +29,10 @@ client_id = ""
 client_secret = ""
 
 [gear]
-# Total number of virtual gears. 21 is the recommended default because it gives
-# a true neutral middle gear when min/max are symmetric.
-count = 21
+# Total number of virtual gears. Default maps one gear per roller scale value.
+count = 22
 # Neutral gear (0-indexed, this gear = 1.0x trainer gradient feel)
-neutral = 10
+neutral = 11
 # Legacy compatibility knob for older configs
 step_grade = 0.5
 # Highest gear gradient feel scale
@@ -48,10 +47,10 @@ min_difficulty_scale = 0.15
 downhill_scale = 0.5
 # Seconds to ramp trainer resistance from flat at ride start
 startup_resistance_ramp_s = 12.0
-# Lowest gear trainer grade offset (%). Gear 1 maps exactly to this value.
-roller_min_grade = -10.0
-# Highest gear trainer grade offset (%). Final gear maps exactly to this value.
-roller_max_grade = 10.0
+# Lowest gear roller scale value. Gear 1 maps exactly to this value.
+roller_min_grade = 1.0
+# Highest gear roller scale value. Final gear maps exactly to this value.
+roller_max_grade = 22.0
 
 [physics]
 # Default rider + bike mass in kg (overridden by profile weight if set)

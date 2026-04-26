@@ -233,7 +233,7 @@ def api_config_gear_range():
     data = request.get_json(silent=True) or {}
 
     try:
-        gear_count = int(data.get("gear_count", 21))
+        gear_count = int(data.get("gear_count", 22))
         min_grade = float(data.get("roller_min_grade"))
         max_grade = float(data.get("roller_max_grade"))
     except (TypeError, ValueError):
@@ -241,8 +241,8 @@ def api_config_gear_range():
 
     if gear_count < 2 or gear_count > 40:
         return jsonify({"status": "error", "error": "gear_count must be within 2..40"}), 400
-    if min_grade < -40.0 or max_grade > 40.0 or min_grade >= max_grade:
-        return jsonify({"status": "error", "error": "range must be ordered and within -40..40"}), 400
+    if min_grade < 1.0 or max_grade > 40.0 or min_grade >= max_grade:
+        return jsonify({"status": "error", "error": "range must be ordered and within 1..40"}), 400
 
     config = current_app.config["APP_CONFIG"]
     config.gear.count = gear_count

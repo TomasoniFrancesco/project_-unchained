@@ -10,16 +10,16 @@ class GearSystem:
 
     def __init__(
         self,
-        count=21,
-        neutral=5,
+        count=22,
+        neutral=11,
         step_grade=0.5,
         max_difficulty_scale=None,
         debounce_ms=200,
         smoothing=0.3,
         min_difficulty_scale=0.15,
         downhill_scale=0.5,
-        roller_min_grade=-10.0,
-        roller_max_grade=10.0,
+        roller_min_grade=1.0,
+        roller_max_grade=22.0,
     ):
         self.gear_min = 0
         self.gear_count = max(2, min(40, int(count)))
@@ -34,8 +34,8 @@ class GearSystem:
         else:
             self.max_difficulty_scale = max(1.0, float(max_difficulty_scale))
         self.downhill_scale = max(0.0, min(float(downhill_scale), 1.0))
-        self.roller_min_grade = max(-40.0, min(40.0, float(roller_min_grade)))
-        self.roller_max_grade = max(-40.0, min(40.0, float(roller_max_grade)))
+        self.roller_min_grade = max(1.0, min(40.0, float(roller_min_grade)))
+        self.roller_max_grade = max(1.0, min(40.0, float(roller_max_grade)))
         if self.roller_min_grade > self.roller_max_grade:
             self.roller_min_grade, self.roller_max_grade = self.roller_max_grade, self.roller_min_grade
 
@@ -77,7 +77,7 @@ class GearSystem:
             self.current_gear += 1
             self._target_offset = self._compute_offset_for_gear(self.current_gear)
             self._last_shift_time = now
-            print(f"  [GEAR] {old} → {self.current_gear} (UP) | roller offset: {self._target_offset:.2f}%")
+            print(f"  [GEAR] {old} → {self.current_gear} (UP) | roller: {self._target_offset:.2f}")
         else:
             print(f"  [GEAR] Already at max gear ({self.gear_max})")
 
@@ -92,7 +92,7 @@ class GearSystem:
             self.current_gear -= 1
             self._target_offset = self._compute_offset_for_gear(self.current_gear)
             self._last_shift_time = now
-            print(f"  [GEAR] {old} → {self.current_gear} (DOWN) | roller offset: {self._target_offset:.2f}%")
+            print(f"  [GEAR] {old} → {self.current_gear} (DOWN) | roller: {self._target_offset:.2f}")
         else:
             print(f"  [GEAR] Already at min gear ({self.gear_min})")
 

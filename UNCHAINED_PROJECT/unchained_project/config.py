@@ -32,8 +32,8 @@ class StravaConfig:
 
 @dataclass
 class GearConfig:
-    count: int = 21
-    neutral: int = 10
+    count: int = 22
+    neutral: int = 11
     step_grade: float = 0.5
     max_difficulty_scale: float = 3.0
     debounce_ms: int = 200
@@ -41,8 +41,8 @@ class GearConfig:
     min_difficulty_scale: float = 0.15
     downhill_scale: float = 0.5
     startup_resistance_ramp_s: float = 12.0
-    roller_min_grade: float = -10.0
-    roller_max_grade: float = 10.0
+    roller_min_grade: float = 1.0
+    roller_max_grade: float = 22.0
 
 
 @dataclass

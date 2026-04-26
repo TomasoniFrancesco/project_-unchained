@@ -11,9 +11,9 @@ const DEFAULTS = {
         debounce_ms: 200,
         smoothing: 0.3,
         startup_resistance_ramp_s: 12,
-        virtual_gear_count: 21,
-        roller_min_grade: -10,
-        roller_max_grade: 10,
+        virtual_gear_count: 22,
+        roller_min_grade: 1,
+        roller_max_grade: 22,
     },
     // Physics
     physics: {
