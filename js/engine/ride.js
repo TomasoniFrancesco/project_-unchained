@@ -374,6 +374,20 @@ export function gearDown() {
     if (typeof bleManager.forceNextSimWrite === 'function') bleManager.forceNextSimWrite();
 }
 
+export function updateRideGearSettings(config = {}) {
+    if (!gears) return;
+    gears.configure({
+        virtualGearCount: config.virtual_gear_count,
+        rollerMinGrade: config.roller_min_grade,
+        rollerMaxGrade: config.roller_max_grade,
+    });
+    state.update({
+        gear: gears.getDisplayGear(),
+        gear_offset: gears.getGradeOffset(),
+    });
+    if (typeof bleManager.forceNextSimWrite === 'function') bleManager.forceNextSimWrite();
+}
+
 /**
  * Finalize and save the ride.
  * @param {string} mode - 'local_only' | 'strava' | 'discard'

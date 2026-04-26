@@ -432,6 +432,13 @@ export function disconnectTrainer() {
     if (trainerServer && trainerServer.connected) trainerServer.disconnect();
     trainerServer = null; trainerControlPoint = null;
     bikeDataChar  = null; trainerDevice = null;
+    state.update({
+        trainer_status: 'disconnected',
+        trainer_name: '',
+        power: 0,
+        cadence: 0,
+        speed: 0,
+    });
 }
 
 // ══════════════════════════════════════════════════════════════════

@@ -3,13 +3,25 @@
  * Most complex view — handles canvas lifecycle, animation frames, modals.
  */
 import { state } from '../state.js';
-import { startRide, stopRide, togglePause, gearUp, gearDown, finalizeRide, getRoutePoints, getRideTotalDistance } from '../engine/ride.js';
+import { startRide, stopRide, togglePause, gearUp, gearDown, finalizeRide, updateRideGearSettings } from '../engine/ride.js';
 import { loadProfile } from '../storage/profile.js';
-import { setControllerCallbacks, getControllerInfo, isControllerConnected } from '../ble/manager.js';
+import { loadConfig, updateGearRange } from '../storage/config.js';
+import {
+    setControllerCallbacks,
+    getControllerInfo,
+    scanAndConnectTrainer,
+    scanAndConnectHeartRate,
+    scanAndConnectController,
+    disconnectTrainer,
+    disconnectHeartRate,
+    disconnectController,
+    isWebBluetoothAvailable,
+} from '../ble/manager.js';
 import { navigateTo } from '../router.js';
 
 let animFrameId = null;
 let stateListener = null;
+let deviceStateListener = null;
 let keyListener = null;
 let resizeListener = null;
 
@@ -39,6 +51,7 @@ export function mount(container) {
         .action-btn:hover { background:rgba(255,255,255,0.12); color:#fff; }
         .action-btn.pause.paused { border-color:rgba(245,158,11,0.5); color:#F59E0B; }
         .action-btn.stop:hover { border-color:rgba(239,68,68,0.5); color:#EF4444; }
+        .action-btn.utility { padding-inline:14px; }
         .center-hud { position:absolute; top:16px; left:50%; transform:translateX(-50%); display:flex; flex-direction:column; align-items:center; gap:6px; }
         .timer-pill { padding:8px 28px; text-align:center; }
         .timer-value { font-size:2.2rem; font-weight:800; letter-spacing:-0.02em; font-variant-numeric:tabular-nums; text-shadow:0 2px 20px rgba(0,0,0,0.5); }
@@ -63,10 +76,10 @@ export function mount(container) {
         .zone-segment.active { box-shadow:0 0 8px currentColor; transform:scaleY(1.6); }
         .bottom-bar { position:absolute; bottom:0; left:0; right:0; display:flex; flex-direction:column; }
         .bottom-controls { display:flex; justify-content:space-between; align-items:flex-end; padding:0 20px 10px; }
-        .bottom-left { display:flex; gap:8px; align-items:flex-end; }
-        .stat-mini { padding:8px 14px; text-align:center; }
-        .stat-mini .mini-val { font-size:1.1rem; font-weight:800; font-variant-numeric:tabular-nums; }
-        .stat-mini .mini-label { font-size:0.5rem; font-weight:600; text-transform:uppercase; letter-spacing:0.1em; color:rgba(255,255,255,0.4); margin-top:2px; }
+        .bottom-left { display:flex; gap:10px; align-items:flex-end; }
+        .stat-mini { padding:12px 18px; text-align:center; min-width:92px; }
+        .stat-mini .mini-val { font-size:1.55rem; font-weight:900; font-variant-numeric:tabular-nums; line-height:1; }
+        .stat-mini .mini-label { font-size:0.6rem; font-weight:700; text-transform:uppercase; letter-spacing:0.1em; color:rgba(255,255,255,0.45); margin-top:5px; }
         .calories-val{color:var(--color-calories)} .elevation-val{color:var(--color-elevation)} .climb-val{color:var(--color-elevation)}
         .gear-block { padding:12px 20px; display:flex; align-items:center; gap:16px; }
         .gear-number { font-size:3.2rem; font-weight:900; line-height:1; font-variant-numeric:tabular-nums; color:#fff; text-shadow:0 2px 16px rgba(0,0,0,0.4); }
@@ -100,6 +113,26 @@ export function mount(container) {
         .modal-status .status-icon { font-size:2rem; display:block; margin-bottom:8px; }
         .power-trend { font-size:0.55em; vertical-align:super; margin-left:3px; opacity:0.65; }
         .power-trend.up { color:#EF4444; } .power-trend.down { color:var(--primary); }
+        .ride-panel-body { display:grid; gap:12px; margin-top:16px; }
+        .settings-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+        .form-row { display:grid; gap:6px; }
+        .form-row.full { grid-column:1 / -1; }
+        .form-row label { font-size:0.58rem; font-weight:700; text-transform:uppercase; letter-spacing:0.1em; color:rgba(255,255,255,0.48); }
+        .ride-input { width:100%; padding:10px 12px; border-radius:10px; border:1px solid rgba(255,255,255,0.12); background:rgba(255,255,255,0.06); color:#fff; font:inherit; font-size:0.82rem; outline:none; }
+        .ride-input:focus { border-color:rgba(249,115,22,0.65); }
+        .panel-copy { font-size:0.74rem; color:rgba(255,255,255,0.52); line-height:1.5; }
+        .device-panel-grid { display:grid; gap:8px; }
+        .device-row-live { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:12px; border:1px solid rgba(255,255,255,0.08); background:rgba(255,255,255,0.045); }
+        .device-dot-live { width:9px; height:9px; border-radius:50%; background:#6B7280; box-shadow:0 0 0 0 transparent; flex-shrink:0; }
+        .device-dot-live.connected { background:#22C55E; box-shadow:0 0 10px rgba(34,197,94,0.45); }
+        .device-dot-live.connecting { background:#F59E0B; box-shadow:0 0 10px rgba(245,158,11,0.35); }
+        .device-live-main { flex:1; min-width:0; }
+        .device-live-name { font-size:0.82rem; font-weight:800; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .device-live-status { font-size:0.66rem; color:rgba(255,255,255,0.5); margin-top:2px; }
+        .device-actions { display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; }
+        .mini-btn { padding:7px 10px; border-radius:9px; border:1px solid rgba(255,255,255,0.12); background:rgba(255,255,255,0.06); color:rgba(255,255,255,0.78); font:inherit; font-size:0.66rem; font-weight:700; cursor:pointer; }
+        .mini-btn:hover { border-color:rgba(249,115,22,0.5); color:#fff; background:rgba(249,115,22,0.14); }
+        .mini-btn.danger:hover { border-color:rgba(239,68,68,0.5); background:rgba(239,68,68,0.12); color:#FCA5A5; }
 
         /* ── Ride HUD responsive: phones ── */
         @media (max-width: 640px) {
@@ -128,7 +161,7 @@ export function mount(container) {
             .bottom-controls { flex-direction:column-reverse; align-items:stretch; gap:8px; padding:0 12px 8px; }
             .bottom-left { flex-wrap:wrap; gap:6px; justify-content:center; }
             .stat-mini { padding:6px 10px; }
-            .stat-mini .mini-val { font-size:0.9rem; }
+            .stat-mini .mini-val { font-size:1.1rem; }
             .stat-mini .mini-label { font-size:0.42rem; }
             .gear-block { padding:8px 14px; gap:12px; justify-content:center; }
             .gear-number { font-size:2.4rem; }
@@ -139,6 +172,10 @@ export function mount(container) {
             .modal-option { padding:12px 14px; gap:10px; min-height:48px; }
             .opt-label { font-size:0.78rem; }
             .opt-desc { font-size:0.62rem; }
+            .settings-grid { grid-template-columns:1fr; }
+            .device-row-live { align-items:flex-start; flex-direction:column; }
+            .device-actions { width:100%; justify-content:stretch; }
+            .mini-btn { flex:1; min-height:38px; }
         }
 
         /* ── Ride HUD responsive: very small phones ── */
@@ -174,7 +211,7 @@ export function mount(container) {
             .bottom-controls { padding:0 12px 4px; }
             .bottom-left { gap:4px; }
             .stat-mini { padding:4px 8px; }
-            .stat-mini .mini-val { font-size:0.8rem; }
+            .stat-mini .mini-val { font-size:0.95rem; }
             .gear-block { padding:6px 12px; gap:8px; }
             .gear-number { font-size:1.8rem; }
             .gear-arrow { width:36px; height:36px; }
@@ -197,6 +234,8 @@ export function mount(container) {
                     <div class="route-name-pill pill-sm"><span class="live-dot" id="liveDot"></span><span id="routeNameLabel">${route.name}</span></div>
                 </div>
                 <div class="top-actions">
+                    <button class="action-btn utility" id="rideSettingsBtn">Settings</button>
+                    <button class="action-btn utility" id="rideDevicesBtn">Devices</button>
                     <button class="action-btn pause" id="pauseBtn">⏸ Pause</button>
                     <button class="action-btn stop" id="stopBtn">■ Stop</button>
                 </div>
@@ -239,6 +278,46 @@ export function mount(container) {
                 </div>
                 <div class="progress-strip"><div class="progress-fill" id="progBar"></div></div>
                 <div class="elev-strip"><canvas id="elevCanvas"></canvas></div>
+            </div>
+        </div>
+
+        <div class="modal-backdrop" id="settingsModal">
+            <div class="modal pill">
+                <div class="modal-header"><span class="modal-header-icon">⚙</span><span class="modal-title">Trainer Settings</span></div>
+                <div class="panel-copy">Changes apply immediately to the active ride.</div>
+                <div class="ride-panel-body">
+                    <div class="settings-grid">
+                        <div class="form-row full">
+                            <label for="rideGearCount">Virtual gears</label>
+                            <input class="ride-input" type="number" id="rideGearCount" min="2" max="40" step="1">
+                        </div>
+                        <div class="form-row">
+                            <label for="rideRollerMin">Roller min</label>
+                            <input class="ride-input" type="number" id="rideRollerMin" min="1" max="40" step="1">
+                        </div>
+                        <div class="form-row">
+                            <label for="rideRollerMax">Roller max</label>
+                            <input class="ride-input" type="number" id="rideRollerMax" min="1" max="40" step="1">
+                        </div>
+                    </div>
+                    <div class="modal-options">
+                        <button class="modal-option local" id="saveRideSettings"><span class="opt-icon">✓</span><span class="opt-text"><span class="opt-label">Apply</span><span class="opt-desc">Update resistance mapping now</span></span></button>
+                        <button class="modal-option cancel" id="closeSettings"><span class="opt-icon">←</span><span class="opt-text"><span class="opt-label">Cancel</span><span class="opt-desc">Return to ride</span></span></button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal-backdrop" id="devicesModal">
+            <div class="modal pill">
+                <div class="modal-header"><span class="modal-header-icon">⌁</span><span class="modal-title">Bluetooth Devices</span></div>
+                <div class="panel-copy" id="bleAvailabilityText">Reconnect devices without leaving the ride.</div>
+                <div class="ride-panel-body">
+                    <div class="device-panel-grid" id="rideDeviceList"></div>
+                    <div class="modal-options">
+                        <button class="modal-option cancel" id="closeDevices"><span class="opt-icon">←</span><span class="opt-text"><span class="opt-label">Close</span><span class="opt-desc">Return to ride</span></span></button>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -316,8 +395,22 @@ export function mount(container) {
         const dx = d1 - d0; return dx > 0 ? (e1 - e0) / dx : 0;
     }
 
-    // ── Procedural stars (generated once) ──
+    // ── Procedural world elements (generated once) ──
     const stars = Array.from({length:120}, () => ({x:Math.random(),y:Math.random()*0.45,r:Math.random()*1.2+0.3,b:Math.random()*0.5+0.5}));
+    const scenerySpan = 1400;
+    const scenery = Array.from({ length: 72 }, (_, i) => {
+        const lane = i % 2 === 0 ? -1 : 1;
+        const roll = pseudoNoise(i * 9.1, 22);
+        const type = roll > 0.78 ? 'sign' : roll > 0.58 ? 'rock' : 'tree';
+        return {
+            dist: 60 + i * (scenerySpan / 72) + pseudoNoise(i, 5) * 18,
+            side: lane,
+            type,
+            offset: 20 + pseudoNoise(i, 11) * 70,
+            height: 0.85 + pseudoNoise(i, 17) * 0.6,
+            lean: (pseudoNoise(i, 31) - 0.5) * 0.18,
+        };
+    });
 
     // ── Seeded noise for mountains ──
     function pseudoNoise(x, seed) {
@@ -333,6 +426,92 @@ export function mount(container) {
         return v / total;
     }
 
+    function mixColor(a, b, t) {
+        const pa = [1, 3, 5].map(i => parseInt(a.slice(i, i + 2), 16));
+        const pb = [1, 3, 5].map(i => parseInt(b.slice(i, i + 2), 16));
+        const m = pa.map((v, i) => Math.round(v + (pb[i] - v) * clamp(t, 0, 1)));
+        return `rgb(${m[0]},${m[1]},${m[2]})`;
+    }
+
+    function drawRoadsideScenery(ctx, w, h, currentDist, vanishX, vanishY, roadBottom, day) {
+        const lookAhead = 820;
+        const ordered = scenery
+            .map(item => ({ ...item, rel: (item.dist - (currentDist % scenerySpan) + scenerySpan) % scenerySpan }))
+            .filter(item => item.rel < lookAhead)
+            .sort((a, b) => b.rel - a.rel);
+
+        for (const item of ordered) {
+            const depth = 1 - item.rel / lookAhead;
+            const y = vanishY + Math.pow(depth, 1.55) * (roadBottom - vanishY);
+            const roadHalfW = lerp(2, w * 0.18, Math.pow(depth, 1.2));
+            const sway = Math.sin((currentDist + item.rel) * 0.003 + depth * 3) * roadHalfW * 0.12 * (1 - depth * 0.35);
+            const x = vanishX + sway + item.side * (roadHalfW + item.offset * (0.55 + depth));
+            const scale = (0.18 + depth * 1.35) * item.height;
+            const alpha = clamp(depth * 1.35, 0, 1);
+            ctx.save();
+            ctx.globalAlpha = alpha;
+            ctx.translate(x, y);
+            ctx.scale(item.side, 1);
+            if (item.type === 'tree') drawTree(ctx, scale, item.lean, day);
+            else if (item.type === 'rock') drawRock(ctx, scale, day);
+            else drawSign(ctx, scale, item.side);
+            ctx.restore();
+        }
+    }
+
+    function drawTree(ctx, scale, lean, day) {
+        const trunkH = 42 * scale;
+        ctx.save();
+        ctx.rotate(lean);
+        ctx.fillStyle = day > 0.5 ? '#5A3E2B' : '#30261F';
+        ctx.fillRect(-3 * scale, -trunkH, 6 * scale, trunkH);
+        const leafBase = day > 0.5 ? '#1F7A42' : '#12341F';
+        ctx.fillStyle = leafBase;
+        for (let i = 0; i < 3; i++) {
+            const r = (17 - i * 2) * scale;
+            const cy = -trunkH - i * 13 * scale;
+            ctx.beginPath();
+            ctx.moveTo(0, cy - r * 1.3);
+            ctx.lineTo(-r, cy + r * 0.8);
+            ctx.lineTo(r, cy + r * 0.8);
+            ctx.closePath();
+            ctx.fill();
+        }
+        ctx.restore();
+    }
+
+    function drawRock(ctx, scale, day) {
+        ctx.fillStyle = day > 0.5 ? '#6B7280' : '#2D3441';
+        ctx.beginPath();
+        ctx.moveTo(-18 * scale, 0);
+        ctx.lineTo(-8 * scale, -12 * scale);
+        ctx.lineTo(10 * scale, -14 * scale);
+        ctx.lineTo(22 * scale, -2 * scale);
+        ctx.lineTo(16 * scale, 6 * scale);
+        ctx.lineTo(-14 * scale, 7 * scale);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+        ctx.stroke();
+    }
+
+    function drawSign(ctx, scale) {
+        ctx.fillStyle = '#5A3E2B';
+        ctx.fillRect(-2 * scale, -34 * scale, 4 * scale, 34 * scale);
+        ctx.fillStyle = '#F59E0B';
+        ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+        ctx.lineWidth = 1.5 * scale;
+        ctx.beginPath();
+        ctx.rect(-17 * scale, -52 * scale, 34 * scale, 18 * scale);
+        ctx.fill();
+        ctx.stroke();
+        ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+        ctx.beginPath();
+        ctx.moveTo(-8 * scale, -43 * scale);
+        ctx.lineTo(7 * scale, -43 * scale);
+        ctx.stroke();
+    }
+
     // ── 3D Scene Renderer ──
     function drawScene(currentDist) {
         const canvas = $('#sceneCanvas'); const { ctx, w, h } = setupCanvas(canvas);
@@ -342,28 +521,42 @@ export function mount(container) {
         const curSlope = getSlopeAtDist(currentDist);
         const progress = elevBounds.maxDist > 0 ? currentDist / elevBounds.maxDist : 0;
 
-        // ── Sky gradient ──
+        const dayPhase = clamp(progress * 1.25, 0, 1);
+        const dawn = clamp((dayPhase - 0.18) / 0.34, 0, 1);
+        const day = clamp((dayPhase - 0.42) / 0.34, 0, 1);
+
+        // ── Sky gradient with route-driven night → day transition ──
         const skyGrad = ctx.createLinearGradient(0, 0, 0, horizonY);
-        skyGrad.addColorStop(0, '#050a18'); skyGrad.addColorStop(0.3, '#0a1428');
-        skyGrad.addColorStop(0.6, '#0f1f3a'); skyGrad.addColorStop(1, '#1a3358');
+        skyGrad.addColorStop(0, mixColor('#050a18', '#76B7E8', day));
+        skyGrad.addColorStop(0.35, mixColor('#0a1428', '#F8B16D', dawn * (1 - day * 0.45)));
+        skyGrad.addColorStop(0.68, mixColor('#0f1f3a', '#9DD7F4', day));
+        skyGrad.addColorStop(1, mixColor('#1a3358', '#D9F2FF', day));
         ctx.fillStyle = skyGrad; ctx.fillRect(0, 0, w, horizonY + 2);
 
         // ── Stars ──
         for (const s of stars) {
             const flicker = 0.6 + 0.4 * Math.sin(performance.now() * 0.001 * s.b + s.x * 100);
-            ctx.globalAlpha = s.b * flicker * 0.7;
+            ctx.globalAlpha = s.b * flicker * 0.7 * (1 - dawn);
             ctx.fillStyle = '#fff'; ctx.beginPath();
             ctx.arc(s.x * w, s.y * h, s.r, 0, Math.PI * 2); ctx.fill();
         }
         ctx.globalAlpha = 1;
 
-        // ── Moon glow ──
-        const moonX = w * 0.78, moonY = h * 0.12;
+        // ── Moon to daylight transition ──
+        const moonX = w * (0.78 - dayPhase * 0.46), moonY = h * (0.12 + dayPhase * 0.18);
+        ctx.globalAlpha = Math.max(0, 1 - dayPhase * 1.35);
         const moonGlow = ctx.createRadialGradient(moonX, moonY, 0, moonX, moonY, 80);
         moonGlow.addColorStop(0, 'rgba(200,220,255,0.15)'); moonGlow.addColorStop(1, 'transparent');
         ctx.fillStyle = moonGlow; ctx.fillRect(moonX - 80, moonY - 80, 160, 160);
         ctx.fillStyle = 'rgba(220,230,255,0.8)'; ctx.beginPath();
         ctx.arc(moonX, moonY, 8, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = day;
+        const sunX = w * (0.16 + day * 0.1), sunY = h * (0.25 - day * 0.12);
+        const sunGlow = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, 95);
+        sunGlow.addColorStop(0, 'rgba(255,219,145,0.42)'); sunGlow.addColorStop(1, 'transparent');
+        ctx.fillStyle = sunGlow; ctx.fillRect(sunX - 95, sunY - 95, 190, 190);
+        ctx.fillStyle = 'rgba(255,232,165,0.9)'; ctx.beginPath(); ctx.arc(sunX, sunY, 13, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = 1;
 
         // ── Mountain layers (parallax driven by distance) ──
         const scroll = currentDist * 0.0002;
@@ -449,6 +642,8 @@ export function mount(container) {
         // Orange center glow line
         ctx.strokeStyle = 'rgba(249,115,22,0.2)'; ctx.lineWidth = 3;
         ctx.beginPath(); for (let i = 0; i < centerLine.length; i++) { if (i === 0) ctx.moveTo(centerLine[i].x, centerLine[i].y); else ctx.lineTo(centerLine[i].x, centerLine[i].y); } ctx.stroke();
+
+        drawRoadsideScenery(ctx, w, h, currentDist, vanishX, vanishY, roadBottom, day);
 
         // ── Rider marker ──
         const riderX = vanishX, riderY = roadBottom - 12;
@@ -574,9 +769,124 @@ export function mount(container) {
 
     $('#pauseBtn').onclick = doTogglePause;
     $('#stopBtn').onclick = () => $('#stopModal').classList.add('show');
+    $('#rideSettingsBtn').onclick = () => { hydrateRideSettings(); $('#settingsModal').classList.add('show'); };
+    $('#rideDevicesBtn').onclick = () => { renderRideDevices(); $('#devicesModal').classList.add('show'); };
+    $('#closeSettings').onclick = () => $('#settingsModal').classList.remove('show');
+    $('#closeDevices').onclick = () => $('#devicesModal').classList.remove('show');
     $('#finishCancel').onclick = () => $('#stopModal').classList.remove('show');
     $('#gearUpBtn').onclick = () => gearUp();
     $('#gearDownBtn').onclick = () => gearDown();
+
+    function hydrateRideSettings() {
+        const config = loadConfig();
+        $('#rideGearCount').value = config.gear.virtual_gear_count ?? 22;
+        $('#rideRollerMin').value = config.gear.roller_min_grade ?? 1;
+        $('#rideRollerMax').value = config.gear.roller_max_grade ?? 22;
+    }
+
+    $('#saveRideSettings').onclick = () => {
+        const gearCount = Math.round(Number($('#rideGearCount').value));
+        const minGrade = Number($('#rideRollerMin').value);
+        const maxGrade = Number($('#rideRollerMax').value);
+
+        if (!Number.isFinite(gearCount) || gearCount < 2 || gearCount > 40) {
+            alert('Use a virtual gear count between 2 and 40.');
+            return;
+        }
+        if (!Number.isFinite(minGrade) || !Number.isFinite(maxGrade) || minGrade < 1 || maxGrade > 40 || minGrade >= maxGrade) {
+            alert('Use a roller range between 1 and 40, with min lower than max.');
+            return;
+        }
+
+        updateGearRange(minGrade, maxGrade, gearCount);
+        updateRideGearSettings({
+            virtual_gear_count: gearCount,
+            roller_min_grade: minGrade,
+            roller_max_grade: maxGrade,
+        });
+        $('#settingsModal').classList.remove('show');
+    };
+
+    function deviceStatusText(status, fallback) {
+        if (status === 'connected' || status === 'ready') return 'Connected';
+        if (status === 'connecting' || status === 'scanning' || status === 'verifying') return 'Connecting';
+        if (status === 'degraded') return 'Connected, input not verified';
+        return fallback;
+    }
+
+    function renderRideDevices() {
+        const hasBle = isWebBluetoothAvailable();
+        $('#bleAvailabilityText').textContent = hasBle
+            ? 'Reconnect devices without leaving the ride.'
+            : 'Web Bluetooth is not available in this browser.';
+
+        const trainerStatus = state.get('trainer_status');
+        const hrStatus = state.get('heart_rate_status');
+        const rows = [];
+
+        rows.push(renderDeviceRow({
+            id: 'trainer',
+            name: state.get('trainer_name') || 'Smart Trainer',
+            status: deviceStatusText(trainerStatus, 'Not connected'),
+            dot: trainerStatus === 'connected' ? 'connected' : trainerStatus === 'connecting' ? 'connecting' : '',
+            actions: `<button class="mini-btn" data-action="trainer-connect">${trainerStatus === 'connected' ? 'Reconnect' : 'Connect'}</button>${trainerStatus === 'connected' ? '<button class="mini-btn danger" data-action="trainer-disconnect">Disconnect</button>' : ''}`,
+        }));
+
+        rows.push(renderDeviceRow({
+            id: 'hr',
+            name: state.get('heart_rate_name') || 'Heart Rate Monitor',
+            status: `${deviceStatusText(hrStatus, 'Not connected')}${state.get('heart_rate') ? ` • ${Math.round(state.get('heart_rate'))} bpm` : ''}`,
+            dot: hrStatus === 'connected' ? 'connected' : (hrStatus === 'connecting' || hrStatus === 'scanning') ? 'connecting' : '',
+            actions: `<button class="mini-btn" data-action="hr-connect">${hrStatus === 'connected' ? 'Reconnect' : 'Connect'}</button>${hrStatus === 'connected' ? '<button class="mini-btn danger" data-action="hr-disconnect">Disconnect</button>' : ''}`,
+        }));
+
+        for (let slot = 0; slot < 2; slot++) {
+            const info = getControllerInfo(slot);
+            rows.push(renderDeviceRow({
+                id: `controller-${slot}`,
+                name: info.name || `Controller ${slot + 1}`,
+                status: `${deviceStatusText(info.status, 'Not connected')}${info.inputReady ? ' • Input ready' : ''}`,
+                dot: info.connected ? 'connected' : (info.status === 'connecting' || info.status === 'scanning' || info.status === 'verifying') ? 'connecting' : '',
+                actions: `<button class="mini-btn" data-action="controller-connect">Add</button>${info.status !== 'disconnected' ? `<button class="mini-btn danger" data-action="controller-disconnect" data-slot="${slot}">Disconnect</button>` : ''}`,
+            }));
+        }
+
+        $('#rideDeviceList').innerHTML = rows.join('');
+        $('#rideDeviceList').querySelectorAll('[data-action]').forEach(button => {
+            button.onclick = async () => {
+                const action = button.dataset.action;
+                button.disabled = true;
+                if (action === 'trainer-connect') await scanAndConnectTrainer();
+                if (action === 'trainer-disconnect') disconnectTrainer();
+                if (action === 'hr-connect') await scanAndConnectHeartRate();
+                if (action === 'hr-disconnect') disconnectHeartRate();
+                if (action === 'controller-connect') await scanAndConnectController();
+                if (action === 'controller-disconnect') disconnectController(Number(button.dataset.slot));
+                renderRideDevices();
+            };
+        });
+    }
+
+    function renderDeviceRow({ name, status, dot, actions }) {
+        return `
+            <div class="device-row-live">
+                <span class="device-dot-live ${dot}"></span>
+                <div class="device-live-main">
+                    <div class="device-live-name">${escapeHtml(name)}</div>
+                    <div class="device-live-status">${escapeHtml(status)}</div>
+                </div>
+                <div class="device-actions">${actions}</div>
+            </div>`;
+    }
+
+    function escapeHtml(value) {
+        return String(value || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
 
     async function finishRide(mode) {
         const options = $('#stopModalOptions'); const text = $('#stopModalText');
@@ -606,6 +916,14 @@ export function mount(container) {
     $('#finishStrava').onclick = () => finishRide('strava');
     $('#finishDiscard').onclick = () => finishRide('discard');
     $('#stopModal').onclick = (e) => { if (e.target.id === 'stopModal') $('#stopModal').classList.remove('show'); };
+    $('#settingsModal').onclick = (e) => { if (e.target.id === 'settingsModal') $('#settingsModal').classList.remove('show'); };
+    $('#devicesModal').onclick = (e) => { if (e.target.id === 'devicesModal') $('#devicesModal').classList.remove('show'); };
+
+    deviceStateListener = () => {
+        if ($('#devicesModal').classList.contains('show')) renderRideDevices();
+    };
+    state.addEventListener('change', deviceStateListener);
+    state.addEventListener('batch', deviceStateListener);
 
     keyListener = (e) => {
         if (e.key === 'ArrowUp' || e.key === 'ArrowRight') { e.preventDefault(); gearUp(); }
@@ -620,6 +938,11 @@ export function mount(container) {
 export function unmount() {
     if (animFrameId) { cancelAnimationFrame(animFrameId); animFrameId = null; }
     if (stateListener) { state.removeEventListener('batch', stateListener); stateListener = null; }
+    if (deviceStateListener) {
+        state.removeEventListener('change', deviceStateListener);
+        state.removeEventListener('batch', deviceStateListener);
+        deviceStateListener = null;
+    }
     if (keyListener) { document.removeEventListener('keydown', keyListener); keyListener = null; }
     if (resizeListener) { window.removeEventListener('resize', resizeListener); resizeListener = null; }
     setControllerCallbacks({ gearUp: null, gearDown: null, pause: null });

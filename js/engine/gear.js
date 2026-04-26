@@ -128,6 +128,35 @@ export class GearSystem {
         return this.rollerMinGrade + ((this.rollerMaxGrade - this.rollerMinGrade) * t);
     }
 
+    configure(config = {}) {
+        const previousMax = Math.max(this.gearMax, 1);
+        const currentPosition = this.currentGear / previousMax;
+
+        if (config.virtualGearCount !== undefined) {
+            this.gearCount = normalizeGearCount(config.virtualGearCount, this.gearCount);
+            this.gearMax = this.gearCount - 1;
+            this.neutralGear = Math.max(this.gearMin, Math.min(Math.floor(this.gearCount / 2), this.gearMax));
+
+            const easiestRatio = this.chainring / this.rearCogs[0];
+            const hardestRatio = this.chainring / this.rearCogs[this.rearCogs.length - 1];
+            this._ratios = Array.from({ length: this.gearCount }, (_, index) => {
+                if (this.gearMax <= this.gearMin) return easiestRatio;
+                const t = index / this.gearMax;
+                return easiestRatio + ((hardestRatio - easiestRatio) * t);
+            });
+            this.currentGear = Math.max(this.gearMin, Math.min(Math.round(currentPosition * this.gearMax), this.gearMax));
+        }
+
+        if (config.rollerMinGrade !== undefined) this.rollerMinGrade = normalizeGrade(config.rollerMinGrade, this.rollerMinGrade);
+        if (config.rollerMaxGrade !== undefined) this.rollerMaxGrade = normalizeGrade(config.rollerMaxGrade, this.rollerMaxGrade);
+        if (this.rollerMinGrade > this.rollerMaxGrade) {
+            [this.rollerMinGrade, this.rollerMaxGrade] = [this.rollerMaxGrade, this.rollerMinGrade];
+        }
+
+        this._targetOffset = this._computeOffset(this.currentGear);
+        this._smoothOffset = this._targetOffset;
+    }
+
     /**
      * Must be called each tick to smooth the transition.
      * @param {number} dt — time step in seconds

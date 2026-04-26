@@ -5,7 +5,6 @@ import { listRoutes, importRoute, deleteRoute, getRoute } from '../storage/route
 import { ensureDefaultRoutes } from '../data/default-routes.js';
 import { navigateTo } from '../router.js';
 import { generateRoute, downloadGeneratedGPX } from '../gpx/generator.js';
-import { loadConfig, updateGearRange } from '../storage/config.js';
 
 let selectedKey = null;
 let allRoutes = [];
@@ -450,17 +449,6 @@ export async function mount(container) {
             opacity: 1;
             pointer-events: auto;
         }
-        .settings-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 0.8rem;
-        }
-        .settings-hint {
-            font-size: 0.72rem;
-            color: var(--text-muted);
-            line-height: 1.55;
-            margin-top: 0.8rem;
-        }
         .gen-modal {
             background: var(--surface);
             border: 1px solid var(--glass-border);
@@ -668,7 +656,6 @@ export async function mount(container) {
             }
             .filters-grid,
             .gen-row,
-            .settings-grid,
             .metric-input,
             .elev-stats {
                 grid-template-columns: 1fr;
@@ -704,7 +691,6 @@ export async function mount(container) {
                         <div class="toolbar-title">Build, import, and manage routes</div>
                     </div>
                     <div class="toolbar-actions">
-                        <button class="btn btn-secondary compact-btn" id="settingsBtn" type="button">Impostazioni</button>
                         <button class="btn btn-primary compact-btn" id="generateBtn">Generate Route</button>
                         <button class="btn btn-secondary compact-btn" id="browseBtn">Import GPX</button>
                     </div>
@@ -878,41 +864,6 @@ export async function mount(container) {
         </div>
     </div>
 
-    <div class="gen-overlay" id="settingsOverlay">
-        <div class="gen-modal">
-            <div class="gen-modal-header">
-                <span class="gen-modal-title">Impostazioni</span>
-                <button class="gen-close-btn" id="settingsCloseBtn" type="button">✕</button>
-            </div>
-            <div class="gen-modal-body">
-                <div class="gen-section" style="margin-bottom:0;">
-                    <div class="gen-section-title">Range rullo</div>
-                    <div class="form-group">
-                        <label class="form-label" for="virtualGearCount">Numero marce virtuali</label>
-                        <input class="form-input" type="number" id="virtualGearCount" min="2" max="40" step="1">
-                    </div>
-                    <div class="settings-grid">
-                        <div class="form-group" style="margin-bottom:0;">
-                            <label class="form-label" for="rollerMinGrade">Valore minimo scala rullo</label>
-                            <input class="form-input" type="number" id="rollerMinGrade" min="1" max="40" step="1">
-                        </div>
-                        <div class="form-group" style="margin-bottom:0;">
-                            <label class="form-label" for="rollerMaxGrade">Valore massimo scala rullo</label>
-                            <input class="form-input" type="number" id="rollerMaxGrade" min="1" max="40" step="1">
-                        </div>
-                    </div>
-                    <div class="settings-hint">
-                        Default consigliato: 22 marce su scala 1-22. La marcia piu bassa usa esattamente il minimo configurato; la marcia piu alta usa il massimo.
-                    </div>
-                </div>
-            </div>
-            <div class="gen-modal-footer">
-                <button class="btn btn-secondary" id="settingsCancelBtn" type="button" style="flex:1;">Cancel</button>
-                <button class="btn btn-primary" id="settingsSaveBtn" type="button" style="flex:1;">Save</button>
-            </div>
-        </div>
-    </div>
-
     <div class="gen-toast" id="genToast">Route saved to your library.</div>
     `;
 
@@ -995,9 +946,7 @@ export async function mount(container) {
     };
 
     const overlay = $('#genOverlay');
-    const settingsOverlay = $('#settingsOverlay');
     const closeBtn = $('#genCloseBtn');
-    const settingsCloseBtn = $('#settingsCloseBtn');
     const previewBtn = $('#genPreviewBtn');
     const confirmBtn = $('#genConfirmBtn');
     const diffGroup = $('#diffGroup');
@@ -1015,51 +964,9 @@ export async function mount(container) {
         clearCanvas();
     };
 
-    function hydrateSettingsForm() {
-        const config = loadConfig();
-        $('#virtualGearCount').value = config.gear.virtual_gear_count ?? 22;
-        $('#rollerMinGrade').value = config.gear.roller_min_grade ?? 1;
-        $('#rollerMaxGrade').value = config.gear.roller_max_grade ?? 22;
-    }
-
-    $('#settingsBtn').onclick = () => {
-        hydrateSettingsForm();
-        settingsOverlay.classList.add('open');
-    };
-
     closeBtn.onclick = () => overlay.classList.remove('open');
-    settingsCloseBtn.onclick = () => settingsOverlay.classList.remove('open');
-    $('#settingsCancelBtn').onclick = () => settingsOverlay.classList.remove('open');
     overlay.onclick = (event) => {
         if (event.target === overlay) overlay.classList.remove('open');
-    };
-    settingsOverlay.onclick = (event) => {
-        if (event.target === settingsOverlay) settingsOverlay.classList.remove('open');
-    };
-
-    $('#settingsSaveBtn').onclick = () => {
-        const minGrade = Number($('#rollerMinGrade').value);
-        const maxGrade = Number($('#rollerMaxGrade').value);
-        const gearCount = Math.round(Number($('#virtualGearCount').value));
-
-        if (!Number.isFinite(gearCount) || gearCount < 2 || gearCount > 40) {
-            alert('Inserisci un numero di marce tra 2 e 40. Il valore consigliato e 22.');
-            return;
-        }
-        if (!Number.isFinite(minGrade) || !Number.isFinite(maxGrade) || minGrade < 1 || maxGrade > 40 || minGrade >= maxGrade) {
-            alert('Inserisci un minimo e un massimo validi tra 1 e 40. Il minimo deve essere inferiore al massimo.');
-            return;
-        }
-
-        updateGearRange(minGrade, maxGrade, gearCount);
-        settingsOverlay.classList.remove('open');
-        const toast = $('#genToast');
-        toast.textContent = 'Impostazioni salvate.';
-        toast.classList.add('show');
-        setTimeout(() => {
-            toast.classList.remove('show');
-            toast.textContent = 'Route saved to your library.';
-        }, 2200);
     };
 
     diffGroup.querySelectorAll('.diff-option').forEach((button) => {
